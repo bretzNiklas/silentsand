@@ -11,11 +11,11 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    justify-content: center;
-    height: 100vh;
-    overflow: hidden;
+    min-height: 100vh;
+    overflow-y: auto;
     font-family: 'Segoe UI', system-ui, sans-serif;
     user-select: none;
+    padding: 40px 0;
   }
   h1 {
     color: #c2a67d;
@@ -58,7 +58,7 @@
   button.active { background: #5a4a35; color: #e8d5b7; }
 
   .size-controls { display: flex; align-items: center; gap: 8px; }
-  .size-controls span { color: #5a4a3588; font-size: 12px; letter-spacing: 0.1em; }
+  .size-controls span { color: #c2a67d; font-size: 12px; letter-spacing: 0.1em; font-weight: 500; }
   input[type="range"] {
     -webkit-appearance: none;
     width: 100px;
@@ -75,7 +75,7 @@
     cursor: pointer;
   }
   .tine-controls { display: flex; align-items: center; gap: 8px; }
-  .tine-controls span { color: #5a4a3588; font-size: 12px; letter-spacing: 0.1em; }
+  .tine-controls span { color: #c2a67d; font-size: 12px; letter-spacing: 0.1em; font-weight: 500; }
   .tine-controls .tine-label { color: #c2a67d; min-width: 8px; text-align: center; }
   .info-i {
     display: inline-flex; align-items: center; justify-content: center;
@@ -134,6 +134,36 @@
     transform: translateX(18px);
     background-color: #c2a67d;
   }
+
+  /* Tabs */
+  .tabs {
+    display: flex;
+    justify-content: center;
+    gap: 24px;
+    margin-bottom: 16px;
+    border-bottom: 1px solid #5a4a3544;
+  }
+  .tab-btn {
+    background: none;
+    border: none;
+    color: #5a4a35;
+    padding: 8px 12px;
+    font-size: 12px;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    cursor: pointer;
+    opacity: 0.6;
+    transition: all 0.3s;
+    border-bottom: 2px solid transparent;
+  }
+  .tab-btn:hover { opacity: 1; color: #c2a67d; }
+  .tab-btn.active {
+    opacity: 1;
+    color: #c2a67d;
+    border-bottom: 2px solid #c2a67d;
+  }
+  .tab-content { display: none; }
+  .tab-content.active { display: block; }
 </style>
 </head>
 <body>
@@ -142,111 +172,130 @@
   <canvas id="garden"></canvas>
   <img id="guideOverlay" src="" alt="" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; opacity: 0; object-fit: contain;">
 </div>
-<div style="width: 100%; max-width: 880px; margin-top: 16px; padding: 0 20px;">
+<div style="width: 100%; max-width: 1120px; margin-top: 16px; padding: 0 20px;">
   <button id="clearBtn" style="width: 100%;">Clear Sand</button>
 </div>
 <div class="controls" style="margin-top: 16px;">
-  <div class="tine-controls">
-    <span>Tines</span>
-    <input type="range" id="tineSlider" min="1" max="7" step="1" value="4">
-    <span class="tine-label" id="tineLabel">4</span>
-  </div>
-  <div class="size-controls">
-    <span>Gap</span>
-    <input type="range" id="gapSlider" min="1" max="5" step="0.1" value="3">
-  </div>
-  <div class="size-controls">
-    <span>Size</span>
-    <input type="range" id="sizeSlider" min="4" max="20" value="6">
-  </div>
-  <button id="settingsBtn">Settings</button>
+  <button id="settingsBtn">Tools</button>
 </div>
-<div id="settingsPanel" style="display:none;">
-  <div class="controls" style="margin-top:8px;border-top:1px solid #5a4a3544;padding-top:8px;">
-    <input type="file" id="guideUpload" accept="image/*" style="display: none;">
-    <button id="guideBtn" style="width: auto;">Upload Guide</button>
-    <div class="size-controls">
-      <span>Show</span>
-      <label class="toggle-switch">
-        <input type="checkbox" id="guideToggle" checked>
-        <span class="toggle-slider"></span>
-      </label>
-    </div>
-    <div class="size-controls">
-      <span>Opacity</span>
-      <input type="range" id="guideOpacity" min="0" max="100" value="0">
-    </div>
-    <div class="size-controls">
-      <span>Zoom</span>
-      <input type="range" id="guideZoom" min="50" max="300" value="100">
-    </div>
-    <div class="size-controls">
-      <span>X</span>
-      <input type="range" id="guideX" min="-400" max="400" value="0">
-    </div>
-    <div class="size-controls">
-      <span>Y</span>
-      <input type="range" id="guideY" min="-400" max="400" value="0">
+
+<div id="settingsPanel" style="display:none; margin-top: 16px; padding-top: 8px; border-top: 1px solid #5a4a3544;">
+  <div class="tabs">
+    <button class="tab-btn active" data-tab="tab-rake">Rake</button>
+    <button class="tab-btn" data-tab="tab-guide">Image</button>
+    <button class="tab-btn" data-tab="tab-tuning">Tuning</button>
+  </div>
+
+  <div id="tab-rake" class="tab-content active">
+    <div class="controls">
+      <div class="tine-controls">
+        <span>Tines</span>
+        <input type="range" id="tineSlider" min="1" max="7" step="1" value="4">
+        <span class="tine-label" id="tineLabel">4</span>
+      </div>
+      <div class="size-controls">
+        <span>Gap</span>
+        <input type="range" id="gapSlider" min="1" max="5" step="0.1" value="3">
+      </div>
+      <div class="size-controls">
+        <span>Size</span>
+        <input type="range" id="sizeSlider" min="4" max="20" value="6">
+      </div>
     </div>
   </div>
-  <div class="controls" style="margin-top:8px;border-top:1px solid #5a4a3544;padding-top:8px;">
-    <div class="size-controls">
-      <span>Depth</span>
-      <input type="range" id="dbgDepth" min="0.05" max="0.60" step="0.01" value="0.38">
-      <span class="tine-label" id="dbgDepthLabel">0.38</span>
+
+  <div id="tab-guide" class="tab-content">
+    <div class="controls">
+      <input type="file" id="guideUpload" accept="image/*" style="display: none;">
+      <button id="guideBtn" style="width: auto;">Upload Guide</button>
+      <div class="size-controls">
+        <span>Show</span>
+        <label class="toggle-switch">
+          <input type="checkbox" id="guideToggle" checked>
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+      <div class="size-controls">
+        <span>Opacity</span>
+        <input type="range" id="guideOpacity" min="0" max="100" value="0">
+      </div>
+      <div class="size-controls">
+        <span>Zoom</span>
+        <input type="range" id="guideZoom" min="50" max="300" value="100">
+      </div>
     </div>
-    <div class="size-controls">
-      <span>Rim</span>
-      <input type="range" id="dbgRim" min="0.02" max="0.25" step="0.01" value="0.12">
-      <span class="tine-label" id="dbgRimLabel">0.12</span>
-    </div>
-    <div class="size-controls">
-      <span>Light</span>
-      <input type="range" id="dbgLight" min="0.10" max="0.80" step="0.01" value="0.40">
-      <span class="tine-label" id="dbgLightLabel">0.40</span>
-    </div>
-    <div class="size-controls">
-      <span>Blend</span>
-      <input type="range" id="dbgBlend" min="0.20" max="0.80" step="0.01" value="0.55">
-      <span class="tine-label" id="dbgBlendLabel">0.55</span>
+    <div class="controls" style="margin-top: 8px;">
+      <div class="size-controls">
+        <span>X</span>
+        <input type="range" id="guideX" min="-400" max="400" value="0">
+      </div>
+      <div class="size-controls">
+        <span>Y</span>
+        <input type="range" id="guideY" min="-400" max="400" value="0">
+      </div>
     </div>
   </div>
-  <div class="controls" style="margin-top:8px;border-top:1px solid #5a4a3544;padding-top:8px;">
-    <div class="size-controls">
-      <span>Step</span>
-      <input type="range" id="dbgStep" min="0.03" max="0.50" step="0.01" value="0.22">
-      <span class="tine-label" id="dbgStepLabel">0.22</span>
-      <span class="info-i">i<span class="info-tip">Stroke density. Higher = faster, coarser</span></span>
+
+  <div id="tab-tuning" class="tab-content">
+    <div class="controls">
+      <div class="size-controls">
+        <span>Depth</span>
+        <input type="range" id="dbgDepth" min="0.05" max="0.60" step="0.01" value="0.38">
+        <span class="tine-label" id="dbgDepthLabel">0.38</span>
+      </div>
+      <div class="size-controls">
+        <span>Rim</span>
+        <input type="range" id="dbgRim" min="0.02" max="0.25" step="0.01" value="0.12">
+        <span class="tine-label" id="dbgRimLabel">0.12</span>
+      </div>
+      <div class="size-controls">
+        <span>Light</span>
+        <input type="range" id="dbgLight" min="0.10" max="0.80" step="0.01" value="0.40">
+        <span class="tine-label" id="dbgLightLabel">0.40</span>
+      </div>
+      <div class="size-controls">
+        <span>Blend</span>
+        <input type="range" id="dbgBlend" min="0.20" max="0.80" step="0.01" value="0.55">
+        <span class="tine-label" id="dbgBlendLabel">0.55</span>
+      </div>
     </div>
-    <div class="size-controls">
-      <span>Spread</span>
-      <input type="range" id="dbgSpread" min="1" max="4" step="1" value="1">
-      <span class="tine-label" id="dbgSpreadLabel">1</span>
-      <span class="info-i">i<span class="info-tip">Sand spread radius. Higher = slower, wider piles</span></span>
-    </div>
-    <div class="size-controls">
-      <span>FwdD</span>
-      <input type="range" id="dbgFwdD" min="0.20" max="2.00" step="0.01" value="0.59">
-      <span class="tine-label" id="dbgFwdDLabel">0.59</span>
-      <span class="info-i">i<span class="info-tip">Forward push distance. Higher = sand thrown further ahead</span></span>
-    </div>
-    <div class="size-controls">
-      <span>SideD</span>
-      <input type="range" id="dbgSideD" min="0.10" max="1.50" step="0.01" value="0.66">
-      <span class="tine-label" id="dbgSideDLabel">0.66</span>
-      <span class="info-i">i<span class="info-tip">Side push distance. Higher = wider rim banks</span></span>
-    </div>
-    <div class="size-controls">
-      <span>NormD</span>
-      <input type="range" id="dbgNormD" min="1" max="6" step="1" value="4">
-      <span class="tine-label" id="dbgNormDLabel">4</span>
-      <span class="info-i">i<span class="info-tip">Lighting sample distance. Higher = smoother, softer shading</span></span>
-    </div>
-    <div class="size-controls">
-      <span>Noise</span>
-      <input type="range" id="dbgNoise" min="0.00" max="1.00" step="0.01" value="0.89">
-      <span class="tine-label" id="dbgNoiseLabel">0.89</span>
-      <span class="info-i">i<span class="info-tip">Sand grain texture. Higher = heavier grain</span></span>
+    <div class="controls" style="margin-top:8px;">
+      <div class="size-controls">
+        <span>Step</span>
+        <input type="range" id="dbgStep" min="0.03" max="0.50" step="0.01" value="0.22">
+        <span class="tine-label" id="dbgStepLabel">0.22</span>
+        <span class="info-i">i<span class="info-tip">Stroke density. Higher = faster, coarser</span></span>
+      </div>
+      <div class="size-controls">
+        <span>Spread</span>
+        <input type="range" id="dbgSpread" min="1" max="4" step="1" value="1">
+        <span class="tine-label" id="dbgSpreadLabel">1</span>
+        <span class="info-i">i<span class="info-tip">Sand spread radius. Higher = slower, wider piles</span></span>
+      </div>
+      <div class="size-controls">
+        <span>FwdD</span>
+        <input type="range" id="dbgFwdD" min="0.20" max="2.00" step="0.01" value="0.59">
+        <span class="tine-label" id="dbgFwdDLabel">0.59</span>
+        <span class="info-i">i<span class="info-tip">Forward push distance. Higher = sand thrown further ahead</span></span>
+      </div>
+      <div class="size-controls">
+        <span>SideD</span>
+        <input type="range" id="dbgSideD" min="0.10" max="1.50" step="0.01" value="0.66">
+        <span class="tine-label" id="dbgSideDLabel">0.66</span>
+        <span class="info-i">i<span class="info-tip">Side push distance. Higher = wider rim banks</span></span>
+      </div>
+      <div class="size-controls">
+        <span>NormD</span>
+        <input type="range" id="dbgNormD" min="1" max="6" step="1" value="4">
+        <span class="tine-label" id="dbgNormDLabel">4</span>
+        <span class="info-i">i<span class="info-tip">Lighting sample distance. Higher = smoother, softer shading</span></span>
+      </div>
+      <div class="size-controls">
+        <span>Noise</span>
+        <input type="range" id="dbgNoise" min="0.00" max="1.00" step="0.01" value="0.89">
+        <span class="tine-label" id="dbgNoiseLabel">0.89</span>
+        <span class="info-i">i<span class="info-tip">Sand grain texture. Higher = heavier grain</span></span>
+      </div>
     </div>
   </div>
 </div>
@@ -300,8 +349,8 @@ let cachedSideD = parseFloat(dbgSideD.value);
 let cachedNormD = parseInt(dbgNormD.value);
 let cachedNoise = parseFloat(dbgNoise.value);
 
-const W = Math.min(880, window.innerWidth - 40);
-const H = Math.min(660, window.innerHeight - 120);
+const W = Math.min(1120, window.innerWidth - 40);
+const H = Math.min(630, window.innerHeight - 120);
 canvas.width = W;
 canvas.height = H;
 
@@ -907,6 +956,7 @@ dbgNoise.addEventListener('input', () => {
 
 // Mouse events
 canvas.addEventListener('mousedown', (e) => {
+  if (e.target !== canvas) return;
   drawing = true;
   const [x, y] = getPos(e);
   lastX = x; lastY = y;
@@ -954,6 +1004,7 @@ canvas.addEventListener('mouseenter', () => {
 
 // Touch events
 canvas.addEventListener('touchstart', (e) => {
+  if (e.target !== canvas) return;
   e.preventDefault();
   drawing = true;
   const [x, y] = getPos(e);
@@ -1042,6 +1093,19 @@ function updateGuideTransform() {
 guideZoom.addEventListener('input', updateGuideTransform);
 guideX.addEventListener('input', updateGuideTransform);
 guideY.addEventListener('input', updateGuideTransform);
+
+// --- Tabs ---
+const tabBtns = document.querySelectorAll('.tab-btn');
+const tabContents = document.querySelectorAll('.tab-content');
+
+tabBtns.forEach(btn => {
+  btn.addEventListener('click', () => {
+    tabBtns.forEach(b => b.classList.remove('active'));
+    tabContents.forEach(c => c.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById(btn.dataset.tab).classList.add('active');
+  });
+});
 
 // --- Init ---
 // Force sliders to their HTML default values (override browser autofill)
