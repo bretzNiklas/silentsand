@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Silent Sands</title>
+<link rel="icon" type="image/png" href="img.png">
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body {
@@ -202,6 +203,11 @@
         <input type="range" id="sizeSlider" min="4" max="20" value="6">
       </div>
     </div>
+    <div style="margin-top: 12px; text-align: center;">
+      <span style="color: #c2a67d; font-size: 13px; font-weight: 500; opacity: 0.8; letter-spacing: 0.05em;">
+        Scroll wheel to rotate rake
+      </span>
+    </div>
   </div>
 
   <div id="tab-guide" class="tab-content">
@@ -299,10 +305,6 @@
     </div>
   </div>
 </div>
-<div style="margin-top:10px;display:flex;gap:16px;align-items:center;">
-  <span style="color:#5a4a3599;font-size:11px;letter-spacing:0.1em;">scroll wheel to rotate rake</span>
-  <span id="perfReadout" style="color:#5a4a35aa;font-size:11px;letter-spacing:0.05em;font-family:monospace;"></span>
-</div>
 
 <script>
 const canvas = document.getElementById('garden');
@@ -332,7 +334,6 @@ const dbgNormD = document.getElementById('dbgNormD');
 const dbgNormDLabel = document.getElementById('dbgNormDLabel');
 const dbgNoise = document.getElementById('dbgNoise');
 const dbgNoiseLabel = document.getElementById('dbgNoiseLabel');
-const perfReadout = document.getElementById('perfReadout');
 
 // --- Cached slider values (read from DOM once, then updated via events) ---
 let cachedTineRadius = parseInt(slider.value);
@@ -830,14 +831,6 @@ function render() {
 
   // Update performance readout
   const renderEnd = performance.now();
-  lastRenderTime = renderEnd - renderStart;
-  const now = renderEnd;
-  if (lastFrameTs > 0) {
-    const dt = now - lastFrameTs;
-    lastFps = dt > 0 ? (1000 / dt) : 0;
-  }
-  lastFrameTs = now;
-  perfReadout.textContent = 'c:' + carveTimeAccum.toFixed(1) + ' r:' + lastRenderTime.toFixed(1) + 'ms ' + Math.round(lastFps) + 'fps';
   carveTimeAccum = 0;
 }
 
