@@ -864,7 +864,7 @@ canvas.addEventListener('wheel', (e) => {
   e.preventDefault();
   markCursorDirty();
   const step = Math.PI / 18; // 10 degrees
-  rakeAngle += (e.deltaY > 0 ? 1 : -1) * step;
+  rakeAngle += (e.deltaY > 0 ? -1 : 1) * step;
   rakeAngle = Math.round(rakeAngle / step) * step;
   markCursorDirty();
   requestRender();
