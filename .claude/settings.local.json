@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git init:*)",
+      "Bash(git add:*)",
+      "Bash(git commit -m \"$\\(cat <<''EOF''\nInitial zen garden web game\n\nInteractive sand garden with cursor-driven groove carving, multi-tine\nrake support, scroll-wheel rotation, and adjustable tine count/gap/size.\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(git commit:*)",
+      "Bash(dir /s \"C:\\\\Users\\\\qwert\\\\Desktop\\\\zen-garden\")",
+      "Bash(git -C \"C:\\\\Users\\\\qwert\\\\Desktop\\\\zen-garden\" status)",
+      "Bash(git -C \"C:\\\\Users\\\\qwert\\\\Desktop\\\\zen-garden\" diff --stat)",
+      "Bash(git -C \"C:\\\\Users\\\\qwert\\\\Desktop\\\\zen-garden\" log --oneline -5)",
+      "Bash(git -C \"C:\\\\Users\\\\qwert\\\\Desktop\\\\zen-garden\" add index.html)",
+      "Bash(git -C \"C:\\\\Users\\\\qwert\\\\Desktop\\\\zen-garden\" commit:*)"
+    ]
+  }
+}

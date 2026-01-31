@@ -209,10 +209,10 @@
   <button id="clearBtn" style="width: 100%;">Clear Sand</button>
 </div>
 <div class="controls" style="margin-top: 16px;">
-  <button id="settingsBtn">Tools</button>
+  <button id="settingsBtn" class="active">Tools</button>
 </div>
 
-<div id="settingsPanel" style="display:none; margin-top: 16px; padding-top: 8px; border-top: 1px solid #5a4a3544;">
+<div id="settingsPanel" style="margin-top: 16px; padding-top: 8px; border-top: 1px solid #5a4a3544;">
   <div class="tabs">
     <button class="tab-btn active" data-tab="tab-rake">Rake</button>
     <button class="tab-btn" data-tab="tab-guide">Image</button>
@@ -223,8 +223,8 @@
     <div class="controls">
       <div class="tine-controls">
         <span>Tines</span>
-        <input type="range" id="tineSlider" min="1" max="7" step="1" value="4">
-        <span class="tine-label" id="tineLabel">4</span>
+        <input type="range" id="tineSlider" min="1" max="11" step="1" value="6">
+        <span class="tine-label" id="tineLabel">6</span>
       </div>
       <div class="size-controls">
         <span>Gap</span>
@@ -1045,7 +1045,7 @@ canvas.addEventListener('mousemove', (e) => {
 canvas.addEventListener('wheel', (e) => {
   e.preventDefault();
   markCursorDirty();
-  const step = Math.PI / 18; // 10 degrees
+  const step = Math.PI / 4; // 45 degrees
   rakeAngle += (e.deltaY > 0 ? -1 : 1) * step;
   rakeAngle = Math.round(rakeAngle / step) * step;
   markCursorDirty();
@@ -1168,11 +1168,77 @@ tabBtns.forEach(btn => {
   });
 });
 
+// --- Settings Persistence ---
+function saveSettings() {
+  const settings = {
+    tineRadius: slider.value,
+    tineCount: tineSlider.value,
+    gapMul: gapSlider.value,
+    depth: dbgDepth.value,
+    rim: dbgRim.value,
+    light: dbgLight.value,
+    blend: dbgBlend.value,
+    step: dbgStep.value,
+    spread: dbgSpread.value,
+    fwdD: dbgFwdD.value,
+    sideD: dbgSideD.value,
+    normD: dbgNormD.value,
+    noise: dbgNoise.value,
+    guideShow: guideToggle.checked,
+    guideOpacity: guideOpacity.value,
+    guideZoom: guideZoom.value,
+    guideX: guideX.value,
+    guideY: guideY.value
+  };
+  localStorage.setItem('zenGardenSettings', JSON.stringify(settings));
+}
+
+function loadSettings() {
+  const saved = localStorage.getItem('zenGardenSettings');
+  if (!saved) return;
+  try {
+    const s = JSON.parse(saved);
+    if (s.tineRadius) slider.value = s.tineRadius;
+    if (s.tineCount) tineSlider.value = s.tineCount;
+    if (s.gapMul) gapSlider.value = s.gapMul;
+    if (s.depth) dbgDepth.value = s.depth;
+    if (s.rim) dbgRim.value = s.rim;
+    if (s.light) dbgLight.value = s.light;
+    if (s.blend) dbgBlend.value = s.blend;
+    if (s.step) dbgStep.value = s.step;
+    if (s.spread) dbgSpread.value = s.spread;
+    if (s.fwdD) dbgFwdD.value = s.fwdD;
+    if (s.sideD) dbgSideD.value = s.sideD;
+    if (s.normD) dbgNormD.value = s.normD;
+    if (s.noise) dbgNoise.value = s.noise;
+    
+    if (s.guideShow !== undefined) guideToggle.checked = s.guideShow;
+    if (s.guideOpacity) guideOpacity.value = s.guideOpacity;
+    if (s.guideZoom) guideZoom.value = s.guideZoom;
+    if (s.guideX) guideX.value = s.guideX;
+    if (s.guideY) guideY.value = s.guideY;
+
+    // Apply guide settings visual state
+    guideOverlay.style.display = guideToggle.checked ? 'block' : 'none';
+    guideOverlay.style.opacity = guideOpacity.value / 100;
+    updateGuideTransform();
+  } catch (e) {
+    console.warn('Failed to load settings', e);
+  }
+}
+
+// Add global listener to save on any input change in settings panel
+document.getElementById('settingsPanel').addEventListener('input', saveSettings);
+document.getElementById('settingsPanel').addEventListener('change', saveSettings); // for checkbox
+
 // --- Init ---
 // Force sliders to their HTML default values (override browser autofill)
 document.querySelectorAll('input[type="range"]').forEach(el => {
   el.value = el.getAttribute('value');
 });
+
+loadSettings(); // Override defaults with saved values
+
 // Re-read cached values from the now-correct sliders
 cachedTineRadius = parseInt(slider.value);
 cachedTineCount = parseInt(tineSlider.value);
