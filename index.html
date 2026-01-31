@@ -56,15 +56,7 @@
   }
   button:hover { background: #5a4a35; color: #e8d5b7; }
   button.active { background: #5a4a35; color: #e8d5b7; }
-  #clearBtn .fill {
-    position: absolute; left: 0; top: 0; bottom: 0; width: 0;
-    background: #c2a67d44; pointer-events: none;
-  }
-  #clearBtn.holding .fill {
-    animation: clearFill 0.3s linear forwards;
-  }
-  @keyframes clearFill { from { width: 0; } to { width: 100%; } }
-  #clearBtn span { position: relative; pointer-events: none; }
+
   .size-controls { display: flex; align-items: center; gap: 8px; }
   .size-controls span { color: #5a4a3588; font-size: 12px; letter-spacing: 0.1em; }
   input[type="range"] {
@@ -120,7 +112,7 @@
     <span>Size</span>
     <input type="range" id="sizeSlider" min="4" max="20" value="12">
   </div>
-  <button id="clearBtn"><div class="fill"></div><span>Clear Sand</span></button>
+  <button id="clearBtn">Clear Sand</button>
   <button id="settingsBtn">Settings</button>
 </div>
 <div id="settingsPanel" style="display:none;">
@@ -922,27 +914,7 @@ canvas.addEventListener('touchend', (e) => {
   requestRender();
 });
 
-// Hold-to-clear: hold for 1s to clear sand
-let clearTimer = null;
-function clearStart() {
-  clearBtn.classList.add('holding');
-  clearTimer = setTimeout(() => {
-    clearBtn.classList.remove('holding');
-    clearBtn.querySelector('.fill').style.width = '0';
-    clearSand();
-  }, 300);
-}
-function clearCancel() {
-  if (clearTimer) { clearTimeout(clearTimer); clearTimer = null; }
-  clearBtn.classList.remove('holding');
-  clearBtn.querySelector('.fill').style.width = '0';
-}
-clearBtn.addEventListener('mousedown', clearStart);
-clearBtn.addEventListener('mouseup', clearCancel);
-clearBtn.addEventListener('mouseleave', clearCancel);
-clearBtn.addEventListener('touchstart', (e) => { e.preventDefault(); clearStart(); });
-clearBtn.addEventListener('touchend', clearCancel);
-clearBtn.addEventListener('touchcancel', clearCancel);
+clearBtn.addEventListener('click', clearSand);
 
 const settingsBtn = document.getElementById('settingsBtn');
 const settingsPanel = document.getElementById('settingsPanel');
