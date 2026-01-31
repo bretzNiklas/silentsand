@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Zen Garden</title>
+<title>Silent Sands</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body {
@@ -22,7 +22,7 @@
     font-weight: 300;
     letter-spacing: 0.3em;
     text-transform: uppercase;
-    font-size: 14px;
+    font-size: 20px;
     margin-bottom: 16px;
     opacity: 0.7;
   }
@@ -74,46 +74,48 @@
   .tine-controls { display: flex; align-items: center; gap: 8px; }
   .tine-controls span { color: #5a4a3588; font-size: 12px; letter-spacing: 0.1em; }
   .tine-controls .tine-label { color: #c2a67d; min-width: 8px; text-align: center; }
-  .color-swatches { display: flex; gap: 6px; align-items: center; }
-  .color-swatches span { color: #5a4a3588; font-size: 12px; letter-spacing: 0.1em; }
-  .swatch {
-    width: 22px;
-    height: 22px;
-    border-radius: 50%;
-    cursor: pointer;
-    border: 2px solid transparent;
-    transition: border-color 0.2s, transform 0.2s;
-  }
-  .swatch:hover { transform: scale(1.15); }
-  .swatch.selected { border-color: #e8d5b7; }
 </style>
 </head>
 <body>
-<h1>Zen Garden</h1>
+<h1>Silent Sands</h1>
 <canvas id="garden"></canvas>
 <div class="controls">
-  <button id="modeBtn" class="active">Rake</button>
   <div class="tine-controls">
     <span>Tines</span>
-    <input type="range" id="tineSlider" min="1" max="4" step="1" value="3">
-    <span class="tine-label" id="tineLabel">3</span>
+    <input type="range" id="tineSlider" min="1" max="7" step="1" value="4">
+    <span class="tine-label" id="tineLabel">4</span>
   </div>
   <div class="size-controls">
     <span>Gap</span>
-    <input type="range" id="gapSlider" min="1" max="5" step="0.1" value="2.5">
+    <input type="range" id="gapSlider" min="1" max="5" step="0.1" value="3">
   </div>
   <div class="size-controls">
     <span>Size</span>
     <input type="range" id="sizeSlider" min="4" max="20" value="12">
   </div>
-  <div class="color-swatches">
-    <span>Sand</span>
-    <div class="swatch selected" data-color="0" style="background: rgb(210,190,160);" title="Cream"></div>
-    <div class="swatch" data-color="1" style="background: rgb(185,110,70);" title="Terracotta"></div>
-    <div class="swatch" data-color="2" style="background: rgb(100,75,55);" title="Dark Brown"></div>
-    <div class="swatch" data-color="3" style="background: rgb(160,160,155);" title="Grey"></div>
-  </div>
   <button id="clearBtn">Clear Sand</button>
+</div>
+<div class="controls" style="margin-top:8px;border-top:1px solid #5a4a3544;padding-top:8px;">
+  <div class="size-controls">
+    <span>Depth</span>
+    <input type="range" id="dbgDepth" min="0.05" max="0.60" step="0.01" value="0.18">
+    <span class="tine-label" id="dbgDepthLabel">0.18</span>
+  </div>
+  <div class="size-controls">
+    <span>Rim</span>
+    <input type="range" id="dbgRim" min="0.02" max="0.25" step="0.01" value="0.12">
+    <span class="tine-label" id="dbgRimLabel">0.12</span>
+  </div>
+  <div class="size-controls">
+    <span>Light</span>
+    <input type="range" id="dbgLight" min="0.10" max="0.80" step="0.01" value="0.40">
+    <span class="tine-label" id="dbgLightLabel">0.40</span>
+  </div>
+  <div class="size-controls">
+    <span>Blend</span>
+    <input type="range" id="dbgBlend" min="0.20" max="0.80" step="0.01" value="0.55">
+    <span class="tine-label" id="dbgBlendLabel">0.55</span>
+  </div>
 </div>
 <div style="margin-top:10px;color:#5a4a3544;font-size:11px;letter-spacing:0.1em;">scroll wheel to rotate rake</div>
 
@@ -125,10 +127,16 @@ const clearBtn = document.getElementById('clearBtn');
 const tineSlider = document.getElementById('tineSlider');
 const tineLabel = document.getElementById('tineLabel');
 const gapSlider = document.getElementById('gapSlider');
-const modeBtn = document.getElementById('modeBtn');
-
-const W = Math.min(800, window.innerWidth - 40);
-const H = Math.min(600, window.innerHeight - 120);
+const dbgDepth = document.getElementById('dbgDepth');
+const dbgDepthLabel = document.getElementById('dbgDepthLabel');
+const dbgRim = document.getElementById('dbgRim');
+const dbgRimLabel = document.getElementById('dbgRimLabel');
+const dbgLight = document.getElementById('dbgLight');
+const dbgLightLabel = document.getElementById('dbgLightLabel');
+const dbgBlend = document.getElementById('dbgBlend');
+const dbgBlendLabel = document.getElementById('dbgBlendLabel');
+const W = Math.min(880, window.innerWidth - 40);
+const H = Math.min(660, window.innerHeight - 120);
 canvas.width = W;
 canvas.height = H;
 
@@ -139,10 +147,6 @@ const SAND_COLORS = [
   [100, 75, 55],   // dark brown
   [160, 160, 155]  // grey
 ];
-
-// --- Mode state ---
-let mode = 'rake'; // 'rake' or 'pour'
-let selectedColor = 0;
 
 // --- Data model ---
 const totalPixels = W * H;
@@ -241,6 +245,11 @@ function generateNoiseMap() {
 
 function clearSand() {
   initSand();
+  // Add fine random variation for a natural untouched look
+  for (let i = 0; i < totalPixels; i++) {
+    sandHeight[i] += (Math.random() - 0.5) * 0.3;
+    sandHeight[i] = Math.max(0.1, Math.min(1.5, sandHeight[i]));
+  }
   generateNoiseMap();
   markFullDirty();
   requestRender();
@@ -292,12 +301,18 @@ function getPos(e) {
 
 // --- Pre-computed tine height profile LUT ---
 let tineProfileR = -1;
+let tineProfileDepth = -1;
+let tineProfileRim = -1;
 let tineProfile = null; // Float32Array, size (2*r+1)²
 let tineProfileStride = 0;
 
 function rebuildTineProfile(r) {
-  if (r === tineProfileR) return;
+  const curDepth = parseFloat(dbgDepth.value);
+  const curRim = parseFloat(dbgRim.value);
+  if (r === tineProfileR && curDepth === tineProfileDepth && curRim === tineProfileRim) return;
   tineProfileR = r;
+  tineProfileDepth = curDepth;
+  tineProfileRim = curRim;
   const side = 2 * r + 1;
   tineProfileStride = side;
   tineProfile = new Float32Array(side * side);
@@ -310,12 +325,17 @@ function rebuildTineProfile(r) {
         continue;
       }
       const t = Math.sqrt(dist2) / r;
+      // Smooth groove: cubic ease for the channel, gentle rim
       let h;
-      if (t < 0.65) {
-        h = 1.0 - 0.45 * (1 - (t / 0.65) * (t / 0.65));
+      if (t < 0.6) {
+        const u = t / 0.6;
+        h = 1.0 - curDepth * (1 - u * u * u);
+      } else if (t < 0.85) {
+        const u = (t - 0.6) / 0.25;
+        h = 1.0 + u * curRim;
       } else {
-        const edgeT = (t - 0.65) / 0.35;
-        h = 1.0 + 0.10 * Math.sin(edgeT * Math.PI);
+        const u = (t - 0.85) / 0.15;
+        h = (1.0 + curRim) - u * curRim;
       }
       tineProfile[(dy + r) * side + (dx + r)] = h;
     }
@@ -356,7 +376,8 @@ function carveTine(x, y, radius, dirX, dirY) {
       const idx = py * W + px;
       const currentH = sandHeight[idx];
 
-      const blended = currentH * 0.3 + targetHeight * 0.7;
+      const blendTarget = parseFloat(dbgBlend.value);
+      const blended = currentH * (1 - blendTarget) + targetHeight * blendTarget;
       if (currentH > blended) {
         const displaced = currentH - blended;
         dispIdx[dispCount] = idx;
@@ -366,9 +387,9 @@ function carveTine(x, y, radius, dirX, dirY) {
         dispSrcB[dispCount] = sandB[idx];
         dispCount++;
         sandHeight[idx] = blended;
-      } else {
-        sandHeight[idx] = blended;
       }
+      // Don't raise sand that was already carved lower —
+      // prevents scallop/ribbon artifacts from overlapping stamps
     }
   }
 
@@ -376,8 +397,8 @@ function carveTine(x, y, radius, dirX, dirY) {
   markDirty(ix, iy, r + 2);
 
   // Pass 2: distribute displaced sand using pre-computed gaussian kernel
-  const fwdDist = r * 1.2;
-  const sideDist = r * 0.9;
+  const fwdDist = r * 1.0;
+  const sideDist = r * 0.75;
   // Deposit spread radius for dirty marking
   const depositMarkR = SPREAD_R + 2;
   // Interior bounds — if deposit center is inside these, all kernel entries are in-bounds
@@ -471,52 +492,17 @@ function carveRake(x, y, tineRadius, dirX, dirY) {
 }
 
 // --- Pour tool (optimization #6: sqrt -> squared comparison) ---
-function pourSand(x, y, radius) {
-  const r = Math.floor(radius);
-  const rSq = r * r;
-  const ix = Math.round(x);
-  const iy = Math.round(y);
-  const col = SAND_COLORS[selectedColor];
-
-  for (let dy = -r; dy <= r; dy++) {
-    for (let dx = -r; dx <= r; dx++) {
-      const px = ix + dx;
-      const py = iy + dy;
-      if (px < 0 || px >= W || py < 0 || py >= H) continue;
-
-      const dist2 = dx * dx + dy * dy;
-      if (dist2 > rSq) continue;
-
-      const dist = Math.sqrt(dist2);
-      const t = 1 - dist / r;
-      const amount = 0.04 * t * t;
-      const idx = py * W + px;
-      const destH = sandHeight[idx];
-      const totalH = destH + amount;
-
-      if (totalH > 0.001) {
-        sandR[idx] = (sandR[idx] * destH + col[0] * amount) / totalH;
-        sandG[idx] = (sandG[idx] * destH + col[1] * amount) / totalH;
-        sandB[idx] = (sandB[idx] * destH + col[2] * amount) / totalH;
-      }
-      sandHeight[idx] = totalH;
-    }
-  }
-
-  markDirty(ix, iy, r + 2);
-}
-
 // --- Render (optimization #2: dirty-region, #5: reused ImageData) ---
 function render() {
   const d = imageDataBuf;
   const lightX = -0.7;
   const lightY = -0.7;
 
-  // Expand dirty rect by 2 for normal sampling neighbors
-  const rMinX = Math.max(0, dirtyMinX - 2);
-  const rMinY = Math.max(0, dirtyMinY - 2);
-  const rMaxX = Math.min(W - 1, dirtyMaxX + 2);
-  const rMaxY = Math.min(H - 1, dirtyMaxY + 2);
+  // Expand dirty rect by 4 for normal sampling neighbors
+  const rMinX = Math.max(0, dirtyMinX - 4);
+  const rMinY = Math.max(0, dirtyMinY - 4);
+  const rMaxX = Math.min(W - 1, dirtyMaxX + 4);
+  const rMaxY = Math.min(H - 1, dirtyMaxY + 4);
 
   if (!dirtyEmpty) {
     for (let y = rMinY; y <= rMaxY; y++) {
@@ -530,16 +516,16 @@ function render() {
         const baseB = sandB[idx];
 
         let lighting = 1.0;
-        if (x > 1 && x < W - 2 && y > 1 && y < H - 2) {
-          const dhdx = (sandHeight[idx + 2] - sandHeight[idx - 2]) * 0.25;
-          const dhdy = (sandHeight[idx + 2 * W] - sandHeight[idx - 2 * W]) * 0.25;
+        if (x > 2 && x < W - 3 && y > 2 && y < H - 3) {
+          const dhdx = (sandHeight[idx + 3] - sandHeight[idx - 3]) / 6;
+          const dhdy = (sandHeight[idx + 3 * W] - sandHeight[idx - 3 * W]) / 6;
           const dot = -(dhdx * lightX + dhdy * lightY);
-          lighting = 1.0 + dot * 0.3;
+          lighting = 1.0 + dot * parseFloat(dbgLight.value);
         }
 
-        const heightBrightness = 0.85 + 0.15 * Math.min(Math.max(h, 0), 2);
+        const heightBrightness = 0.82 + 0.18 * Math.min(Math.max(h, 0), 2);
         const shade = lighting * heightBrightness;
-        const noise = noiseMap[idx] * shade * 0.45;
+        const noise = noiseMap[idx] * shade * 0.35;
 
         d[pi]     = Math.max(0, Math.min(255, baseR * shade + noise));
         d[pi + 1] = Math.max(0, Math.min(255, baseG * shade + noise));
@@ -563,44 +549,32 @@ function render() {
   // Draw cursor
   if (onCanvas) {
     ctx.save();
-    if (mode === 'rake') {
-      const tineRadius = parseInt(slider.value);
-      const offsets = getRakeTineOffsets(tineRadius);
-      const [perpX, perpY] = getRakePerp();
+    const tineRadius = parseInt(slider.value);
+    const offsets = getRakeTineOffsets(tineRadius);
+    const [perpX, perpY] = getRakePerp();
 
-      ctx.strokeStyle = 'rgba(80, 60, 40, 0.35)';
-      ctx.fillStyle = 'rgba(80, 60, 40, 0.2)';
-      ctx.lineWidth = 1;
+    ctx.strokeStyle = 'rgba(80, 60, 40, 0.35)';
+    ctx.fillStyle = 'rgba(80, 60, 40, 0.2)';
+    ctx.lineWidth = 1;
 
-      for (const offset of offsets) {
-        const tx = mouseX + perpX * offset;
-        const ty = mouseY + perpY * offset;
-        ctx.beginPath();
-        ctx.arc(tx, ty, tineRadius, 0, Math.PI * 2);
-        ctx.stroke();
-        ctx.fill();
-      }
-
-      if (offsets.length > 1) {
-        ctx.strokeStyle = 'rgba(80, 60, 40, 0.25)';
-        ctx.lineWidth = 2;
-        const first = offsets[0];
-        const last = offsets[offsets.length - 1];
-        ctx.beginPath();
-        ctx.moveTo(mouseX + perpX * first, mouseY + perpY * first);
-        ctx.lineTo(mouseX + perpX * last, mouseY + perpY * last);
-        ctx.stroke();
-      }
-    } else {
-      const pourRadius = parseInt(slider.value);
-      const col = SAND_COLORS[selectedColor];
-      ctx.strokeStyle = `rgba(${col[0]}, ${col[1]}, ${col[2]}, 0.7)`;
-      ctx.fillStyle = `rgba(${col[0]}, ${col[1]}, ${col[2]}, 0.15)`;
-      ctx.lineWidth = 1.5;
+    for (const offset of offsets) {
+      const tx = mouseX + perpX * offset;
+      const ty = mouseY + perpY * offset;
       ctx.beginPath();
-      ctx.arc(mouseX, mouseY, pourRadius, 0, Math.PI * 2);
+      ctx.arc(tx, ty, tineRadius, 0, Math.PI * 2);
       ctx.stroke();
       ctx.fill();
+    }
+
+    if (offsets.length > 1) {
+      ctx.strokeStyle = 'rgba(80, 60, 40, 0.25)';
+      ctx.lineWidth = 2;
+      const first = offsets[0];
+      const last = offsets[offsets.length - 1];
+      ctx.beginPath();
+      ctx.moveTo(mouseX + perpX * first, mouseY + perpY * first);
+      ctx.lineTo(mouseX + perpX * last, mouseY + perpY * last);
+      ctx.stroke();
     }
     ctx.restore();
   }
@@ -617,17 +591,13 @@ function strokeTo(x, y) {
   strokeDX = dx;
   strokeDY = dy;
 
-  const steps = Math.max(1, Math.floor(dist / Math.max(3, tineRadius * 0.4)));
+  const steps = Math.max(1, Math.floor(dist / Math.max(1, tineRadius * 0.07)));
 
   for (let i = 0; i <= steps; i++) {
     const t = i / steps;
     const cx = lastX + dx * t;
     const cy = lastY + dy * t;
-    if (mode === 'rake') {
-      carveRake(cx, cy, tineRadius, strokeDX, strokeDY);
-    } else {
-      pourSand(cx, cy, tineRadius);
-    }
+    carveRake(cx, cy, tineRadius, strokeDX, strokeDY);
   }
 
   lastX = x;
@@ -638,14 +608,10 @@ function strokeTo(x, y) {
 function markCursorDirty() {
   if (!onCanvas) return;
   const tineRadius = parseInt(slider.value);
-  if (mode === 'rake') {
-    const offsets = getRakeTineOffsets(tineRadius);
-    const [px, py] = getRakePerp();
-    for (const offset of offsets) {
-      markDirty(mouseX + px * offset, mouseY + py * offset, tineRadius + 2);
-    }
-  } else {
-    markDirty(mouseX, mouseY, tineRadius + 2);
+  const offsets = getRakeTineOffsets(tineRadius);
+  const [px, py] = getRakePerp();
+  for (const offset of offsets) {
+    markDirty(mouseX + px * offset, mouseY + py * offset, tineRadius + 2);
   }
 }
 
@@ -661,17 +627,35 @@ gapSlider.addEventListener('input', () => {
   requestRender();
 });
 
+// Debug slider listeners
+dbgDepth.addEventListener('input', () => {
+  dbgDepthLabel.textContent = dbgDepth.value;
+  tineProfileR = -1; // force profile rebuild
+  markFullDirty();
+  requestRender();
+});
+dbgRim.addEventListener('input', () => {
+  dbgRimLabel.textContent = dbgRim.value;
+  tineProfileR = -1;
+  markFullDirty();
+  requestRender();
+});
+dbgLight.addEventListener('input', () => {
+  dbgLightLabel.textContent = dbgLight.value;
+  markFullDirty();
+  requestRender();
+});
+dbgBlend.addEventListener('input', () => {
+  dbgBlendLabel.textContent = dbgBlend.value;
+});
+
 // Mouse events
 canvas.addEventListener('mousedown', (e) => {
   drawing = true;
   const [x, y] = getPos(e);
   lastX = x; lastY = y;
   strokeDX = 0; strokeDY = 0;
-  if (mode === 'rake') {
-    carveRake(x, y, parseInt(slider.value), 0, 0);
-  } else {
-    pourSand(x, y, parseInt(slider.value));
-  }
+  carveRake(x, y, parseInt(slider.value), 0, 0);
   requestRender();
 });
 
@@ -692,7 +676,9 @@ canvas.addEventListener('mousemove', (e) => {
 canvas.addEventListener('wheel', (e) => {
   e.preventDefault();
   markCursorDirty();
-  rakeAngle += (e.deltaY > 0 ? 1 : -1) * 0.15;
+  const step = Math.PI / 18; // 10 degrees
+  rakeAngle += (e.deltaY > 0 ? 1 : -1) * step;
+  rakeAngle = Math.round(rakeAngle / step) * step;
   markCursorDirty();
   requestRender();
 }, { passive: false });
@@ -717,11 +703,7 @@ canvas.addEventListener('touchstart', (e) => {
   mouseX = x; mouseY = y;
   onCanvas = true;
   strokeDX = 0; strokeDY = 0;
-  if (mode === 'rake') {
-    carveRake(x, y, parseInt(slider.value), 0, 0);
-  } else {
-    pourSand(x, y, parseInt(slider.value));
-  }
+  carveRake(x, y, parseInt(slider.value), 0, 0);
   requestRender();
 });
 
@@ -747,35 +729,8 @@ canvas.addEventListener('touchend', (e) => {
 
 clearBtn.addEventListener('click', clearSand);
 
-// --- Mode toggle ---
-modeBtn.addEventListener('click', () => {
-  markCursorDirty();
-  mode = mode === 'rake' ? 'pour' : 'rake';
-  modeBtn.textContent = mode === 'rake' ? 'Rake' : 'Pour';
-  modeBtn.classList.toggle('active', mode === 'rake');
-  markCursorDirty();
-  requestRender();
-});
-
-// --- Swatch selection ---
-document.querySelectorAll('.swatch').forEach(el => {
-  el.addEventListener('click', () => {
-    document.querySelectorAll('.swatch').forEach(s => s.classList.remove('selected'));
-    el.classList.add('selected');
-    selectedColor = parseInt(el.dataset.color);
-    mode = 'pour';
-    modeBtn.textContent = 'Pour';
-    modeBtn.classList.remove('active');
-    markCursorDirty();
-    requestRender();
-  });
-});
-
 // --- Init ---
-initSand();
-generateNoiseMap();
-markFullDirty();
-render();
+clearSand();
 </script>
 </body>
 </html>
