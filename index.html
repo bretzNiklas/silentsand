@@ -27,7 +27,7 @@
     opacity: 0.7;
   }
   canvas {
-    border-radius: 6px;
+    display: block;
     cursor: none;
     box-shadow: 0 0 60px rgba(0,0,0,0.5);
   }
@@ -93,11 +93,55 @@
     pointer-events: none; letter-spacing: 0.02em; z-index: 10;
   }
   .info-i:hover .info-tip { display: block; }
+
+  /* Custom Checkbox Toggle */
+  .toggle-switch {
+    position: relative;
+    display: inline-block;
+    width: 36px;
+    height: 18px;
+    margin-left: 4px;
+  }
+  .toggle-switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+  }
+  .toggle-slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background-color: #2a2218;
+    border: 1px solid #5a4a35;
+    transition: .4s;
+    border-radius: 18px;
+  }
+  .toggle-slider:before {
+    position: absolute;
+    content: "";
+    height: 12px;
+    width: 12px;
+    left: 2px;
+    bottom: 2px;
+    background-color: #5a4a35;
+    transition: .4s;
+    border-radius: 50%;
+  }
+  input:checked + .toggle-slider {
+    background-color: #5a4a35;
+  }
+  input:checked + .toggle-slider:before {
+    transform: translateX(18px);
+    background-color: #c2a67d;
+  }
 </style>
 </head>
 <body>
 <h1>Silent Sands</h1>
-<canvas id="garden"></canvas>
+<div style="position: relative; display: inline-block; overflow: hidden; border-radius: 6px;">
+  <canvas id="garden"></canvas>
+  <img id="guideOverlay" src="" alt="" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; opacity: 0; object-fit: contain;">
+</div>
 <div style="width: 100%; max-width: 880px; margin-top: 16px; padding: 0 20px;">
   <button id="clearBtn" style="width: 100%;">Clear Sand</button>
 </div>
@@ -118,6 +162,33 @@
   <button id="settingsBtn">Settings</button>
 </div>
 <div id="settingsPanel" style="display:none;">
+  <div class="controls" style="margin-top:8px;border-top:1px solid #5a4a3544;padding-top:8px;">
+    <input type="file" id="guideUpload" accept="image/*" style="display: none;">
+    <button id="guideBtn" style="width: auto;">Upload Guide</button>
+    <div class="size-controls">
+      <span>Show</span>
+      <label class="toggle-switch">
+        <input type="checkbox" id="guideToggle" checked>
+        <span class="toggle-slider"></span>
+      </label>
+    </div>
+    <div class="size-controls">
+      <span>Opacity</span>
+      <input type="range" id="guideOpacity" min="0" max="100" value="0">
+    </div>
+    <div class="size-controls">
+      <span>Zoom</span>
+      <input type="range" id="guideZoom" min="50" max="300" value="100">
+    </div>
+    <div class="size-controls">
+      <span>X</span>
+      <input type="range" id="guideX" min="-400" max="400" value="0">
+    </div>
+    <div class="size-controls">
+      <span>Y</span>
+      <input type="range" id="guideY" min="-400" max="400" value="0">
+    </div>
+  </div>
   <div class="controls" style="margin-top:8px;border-top:1px solid #5a4a3544;padding-top:8px;">
     <div class="size-controls">
       <span>Depth</span>
@@ -925,6 +996,52 @@ settingsBtn.addEventListener('click', () => {
   settingsPanel.style.display = open ? 'none' : '';
   settingsBtn.classList.toggle('active', !open);
 });
+
+// --- Guide Image Overlay ---
+const guideOverlay = document.getElementById('guideOverlay');
+const guideUpload = document.getElementById('guideUpload');
+const guideBtn = document.getElementById('guideBtn');
+const guideOpacity = document.getElementById('guideOpacity');
+const guideToggle = document.getElementById('guideToggle');
+const guideZoom = document.getElementById('guideZoom');
+const guideX = document.getElementById('guideX');
+const guideY = document.getElementById('guideY');
+
+guideBtn.addEventListener('click', () => guideUpload.click());
+
+guideUpload.addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (evt) => {
+    guideOverlay.src = evt.target.result;
+    // If opacity is 0 (default), set it to 50% so the user sees the image immediately
+    if (guideOpacity.value === '0') {
+      guideOpacity.value = 50;
+      guideOverlay.style.opacity = '0.5';
+    }
+  };
+  reader.readAsDataURL(file);
+});
+
+guideOpacity.addEventListener('input', () => {
+  guideOverlay.style.opacity = guideOpacity.value / 100;
+});
+
+guideToggle.addEventListener('change', () => {
+  guideOverlay.style.display = guideToggle.checked ? 'block' : 'none';
+});
+
+function updateGuideTransform() {
+  const scale = guideZoom.value / 100;
+  const x = guideX.value;
+  const y = guideY.value;
+  guideOverlay.style.transform = `translate(${x}px, ${y}px) scale(${scale})`;
+}
+
+guideZoom.addEventListener('input', updateGuideTransform);
+guideX.addEventListener('input', updateGuideTransform);
+guideY.addEventListener('input', updateGuideTransform);
 
 // --- Init ---
 // Force sliders to their HTML default values (override browser autofill)
