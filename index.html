@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Zen Garden</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #1a1a1a;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100vh;
+    overflow: hidden;
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    user-select: none;
+  }
+  h1 {
+    color: #c2a67d;
+    font-weight: 300;
+    letter-spacing: 0.3em;
+    text-transform: uppercase;
+    font-size: 14px;
+    margin-bottom: 16px;
+    opacity: 0.7;
+  }
+  canvas {
+    border-radius: 6px;
+    cursor: none;
+    box-shadow: 0 0 60px rgba(0,0,0,0.5);
+  }
+  .controls {
+    margin-top: 16px;
+    display: flex;
+    gap: 16px;
+    align-items: center;
+    flex-wrap: wrap;
+    justify-content: center;
+    max-width: 800px;
+  }
+  button {
+    background: none;
+    border: 1px solid #5a4a35;
+    color: #c2a67d;
+    padding: 6px 18px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    transition: all 0.3s;
+  }
+  button:hover { background: #5a4a35; color: #e8d5b7; }
+  .size-controls { display: flex; align-items: center; gap: 8px; }
+  .size-controls span { color: #5a4a3588; font-size: 12px; letter-spacing: 0.1em; }
+  input[type="range"] {
+    -webkit-appearance: none;
+    width: 100px;
+    height: 3px;
+    background: #5a4a35;
+    border-radius: 2px;
+    outline: none;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 12px; height: 12px;
+    background: #c2a67d;
+    border-radius: 50%;
+    cursor: pointer;
+  }
+  .tine-controls { display: flex; align-items: center; gap: 8px; }
+  .tine-controls span { color: #5a4a3588; font-size: 12px; letter-spacing: 0.1em; }
+  .tine-controls .tine-label { color: #c2a67d; min-width: 8px; text-align: center; }
+</style>
+</head>
+<body>
+<h1>Zen Garden</h1>
+<canvas id="garden"></canvas>
+<div class="controls">
+  <div class="tine-controls">
+    <span>Tines</span>
+    <input type="range" id="tineSlider" min="1" max="4" step="1" value="3">
+    <span class="tine-label" id="tineLabel">3</span>
+  </div>
+  <div class="size-controls">
+    <span>Gap</span>
+    <input type="range" id="gapSlider" min="1" max="5" step="0.1" value="2.5">
+  </div>
+  <div class="size-controls">
+    <span>Size</span>
+    <input type="range" id="sizeSlider" min="4" max="40" value="16">
+  </div>
+  <button id="clearBtn">Clear Sand</button>
+</div>
+<div style="margin-top:10px;color:#5a4a3544;font-size:11px;letter-spacing:0.1em;">scroll wheel to rotate rake</div>
+
+<script>
+const canvas = document.getElementById('garden');
+const ctx = canvas.getContext('2d');
+const slider = document.getElementById('sizeSlider');
+const clearBtn = document.getElementById('clearBtn');
+const tineSlider = document.getElementById('tineSlider');
+const tineLabel = document.getElementById('tineLabel');
+const gapSlider = document.getElementById('gapSlider');
+
+// Size canvas
+const W = Math.min(800, window.innerWidth - 40);
+const H = Math.min(600, window.innerHeight - 120);
+canvas.width = W;
+canvas.height = H;
+
+function getTineCount() {
+  return parseInt(tineSlider.value);
+}
+
+// Build rake tine offsets (perpendicular positions relative to center)
+function getRakeTineOffsets(tineRadius) {
+  const count = getTineCount();
+  const spacing = parseFloat(gapSlider.value) * tineRadius;
+  const offsets = [];
+  for (let i = 0; i < count; i++) {
+    offsets.push((i - (count - 1) / 2) * spacing);
+  }
+  return offsets;
+}
+
+tineSlider.addEventListener('input', () => {
+  tineLabel.textContent = tineSlider.value;
+  render();
+});
+
+gapSlider.addEventListener('input', () => { render(); });
+
+// Sand colors
+const SAND_BASE = [210, 190, 160];
+const SAND_LIGHT = [225, 210, 180];
+const GROOVE_DEEP = [145, 125, 98];
+
+// Sand grain texture
+const grainCanvas = document.createElement('canvas');
+grainCanvas.width = W;
+grainCanvas.height = H;
+const grainCtx = grainCanvas.getContext('2d');
+
+function generateSandTexture() {
+  const imageData = grainCtx.createImageData(W, H);
+  const d = imageData.data;
+  for (let i = 0; i < d.length; i += 4) {
+    const noise = (Math.random() - 0.5) * 20;
+    const coarse = Math.random() < 0.03 ? (Math.random() - 0.5) * 40 : 0;
+    d[i]     = SAND_BASE[0] + noise + coarse;
+    d[i + 1] = SAND_BASE[1] + noise + coarse;
+    d[i + 2] = SAND_BASE[2] + noise + coarse;
+    d[i + 3] = 255;
+  }
+  grainCtx.putImageData(imageData, 0, 0);
+}
+
+// Heightmap
+const heightMap = new Float32Array(W * H);
+
+function clearSand() {
+  heightMap.fill(0);
+  generateSandTexture();
+  render();
+}
+
+// Drawing state
+let drawing = false;
+let lastX = -1, lastY = -1;
+let rakeAngle = 0; // radians, controlled by scroll wheel
+let mouseX = -1, mouseY = -1;
+let onCanvas = false;
+
+// Perpendicular direction from rake angle (tines spread along this axis)
+function getRakePerp() {
+  return [Math.cos(rakeAngle), Math.sin(rakeAngle)];
+}
+
+function getPos(e) {
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = W / rect.width;
+  const scaleY = H / rect.height;
+  if (e.touches) {
+    return [
+      (e.touches[0].clientX - rect.left) * scaleX,
+      (e.touches[0].clientY - rect.top) * scaleY
+    ];
+  }
+  return [
+    (e.clientX - rect.left) * scaleX,
+    (e.clientY - rect.top) * scaleY
+  ];
+}
+
+// Carve a single tine groove at (x, y) with given radius
+function carveTine(x, y, radius) {
+  const r = Math.floor(radius);
+  const ix = Math.round(x);
+  const iy = Math.round(y);
+
+  for (let dy = -r; dy <= r; dy++) {
+    for (let dx = -r; dx <= r; dx++) {
+      const px = ix + dx;
+      const py = iy + dy;
+      if (px < 0 || px >= W || py < 0 || py >= H) continue;
+
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist > r) continue;
+
+      const t = dist / r;
+      let depth;
+      if (t < 0.65) {
+        depth = -1.0 * (1 - (t / 0.65) * (t / 0.65));
+      } else {
+        const edgeT = (t - 0.65) / 0.35;
+        depth = 0.35 * Math.sin(edgeT * Math.PI);
+      }
+
+      const idx = py * W + px;
+      heightMap[idx] = heightMap[idx] * 0.3 + depth * 0.7;
+    }
+  }
+}
+
+// Carve all tines of the current rake, placed along rakeAngle
+function carveRake(x, y, tineRadius) {
+  const offsets = getRakeTineOffsets(tineRadius);
+  const [perpX, perpY] = getRakePerp();
+
+  for (const offset of offsets) {
+    const tx = x + perpX * offset;
+    const ty = y + perpY * offset;
+    carveTine(tx, ty, tineRadius);
+  }
+}
+
+// Add fine rake lines within each tine groove
+function carveRakeLines(x, y, tineRadius) {
+  const offsets = getRakeTineOffsets(tineRadius);
+  const [perpX, perpY] = getRakePerp();
+
+  for (const offset of offsets) {
+    const cx = x + perpX * offset;
+    const cy = y + perpY * offset;
+    const r = Math.floor(tineRadius);
+    const rakeSpacing = 3;
+    const rakeCount = Math.floor(r * 2 / rakeSpacing);
+
+    for (let i = -rakeCount; i <= rakeCount; i++) {
+      const localOffset = i * rakeSpacing;
+      const rx = Math.round(cx + perpX * localOffset);
+      const ry = Math.round(cy + perpY * localOffset);
+      if (rx < 0 || rx >= W || ry < 0 || ry >= H) continue;
+      if (Math.abs(localOffset) > r) continue;
+
+      const idx = ry * W + rx;
+      if (heightMap[idx] < -0.15) {
+        heightMap[idx] += Math.sin(i * Math.PI) * 0.07;
+      }
+    }
+  }
+}
+
+function render() {
+  ctx.drawImage(grainCanvas, 0, 0);
+
+  const imageData = ctx.getImageData(0, 0, W, H);
+  const d = imageData.data;
+
+  const lightX = -0.7;
+  const lightY = -0.7;
+
+  for (let y = 1; y < H - 1; y++) {
+    for (let x = 1; x < W - 1; x++) {
+      const idx = y * W + x;
+      const h = heightMap[idx];
+      if (h === 0) continue;
+
+      const dhdx = (heightMap[idx + 1] - heightMap[idx - 1]) * 0.5;
+      const dhdy = (heightMap[idx + W] - heightMap[idx - W]) * 0.5;
+      const dot = -(dhdx * lightX + dhdy * lightY);
+      const lighting = 0.5 + dot * 0.5;
+
+      const pi = idx * 4;
+
+      if (h < 0) {
+        const grooveAmount = Math.min(1, -h);
+        const shade = lighting * 1.2;
+        const gr = SAND_BASE[0] * (1 - grooveAmount) + GROOVE_DEEP[0] * grooveAmount;
+        const gg = SAND_BASE[1] * (1 - grooveAmount) + GROOVE_DEEP[1] * grooveAmount;
+        const gb = SAND_BASE[2] * (1 - grooveAmount) + GROOVE_DEEP[2] * grooveAmount;
+        d[pi]     = Math.max(0, Math.min(255, gr * shade + (Math.random() - 0.5) * 6));
+        d[pi + 1] = Math.max(0, Math.min(255, gg * shade + (Math.random() - 0.5) * 6));
+        d[pi + 2] = Math.max(0, Math.min(255, gb * shade + (Math.random() - 0.5) * 6));
+      } else {
+        const ridgeAmount = Math.min(1, h * 2);
+        const shade = lighting * 1.1;
+        const rr = SAND_BASE[0] * (1 - ridgeAmount) + SAND_LIGHT[0] * ridgeAmount;
+        const rg = SAND_BASE[1] * (1 - ridgeAmount) + SAND_LIGHT[1] * ridgeAmount;
+        const rb = SAND_BASE[2] * (1 - ridgeAmount) + SAND_LIGHT[2] * ridgeAmount;
+        d[pi]     = Math.max(0, Math.min(255, rr * shade + (Math.random() - 0.5) * 6));
+        d[pi + 1] = Math.max(0, Math.min(255, rg * shade + (Math.random() - 0.5) * 6));
+        d[pi + 2] = Math.max(0, Math.min(255, rb * shade + (Math.random() - 0.5) * 6));
+      }
+    }
+  }
+
+  ctx.putImageData(imageData, 0, 0);
+
+  // Draw custom cursor showing all tines
+  if (onCanvas) {
+    const tineRadius = parseInt(slider.value);
+    const offsets = getRakeTineOffsets(tineRadius);
+
+    const [perpX, perpY] = getRakePerp();
+
+    ctx.save();
+    ctx.strokeStyle = 'rgba(80, 60, 40, 0.35)';
+    ctx.fillStyle = 'rgba(80, 60, 40, 0.2)';
+    ctx.lineWidth = 1;
+
+    for (const offset of offsets) {
+      const tx = mouseX + perpX * offset;
+      const ty = mouseY + perpY * offset;
+      ctx.beginPath();
+      ctx.arc(tx, ty, tineRadius, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.fill();
+    }
+
+    // Connecting bar across tines
+    if (offsets.length > 1) {
+      ctx.strokeStyle = 'rgba(80, 60, 40, 0.25)';
+      ctx.lineWidth = 2;
+      const first = offsets[0];
+      const last = offsets[offsets.length - 1];
+      ctx.beginPath();
+      ctx.moveTo(mouseX + perpX * first, mouseY + perpY * first);
+      ctx.lineTo(mouseX + perpX * last, mouseY + perpY * last);
+      ctx.stroke();
+    }
+
+    ctx.restore();
+  }
+}
+
+function strokeTo(x, y) {
+  const tineRadius = parseInt(slider.value);
+  const dx = x - lastX;
+  const dy = y - lastY;
+  const dist = Math.sqrt(dx * dx + dy * dy);
+  if (dist < 1) return;
+
+  const steps = Math.max(1, Math.floor(dist / 2));
+
+  for (let i = 0; i <= steps; i++) {
+    const t = i / steps;
+    const cx = lastX + dx * t;
+    const cy = lastY + dy * t;
+    carveRake(cx, cy, tineRadius);
+    carveRakeLines(cx, cy, tineRadius);
+  }
+
+  lastX = x;
+  lastY = y;
+}
+
+// Mouse events
+canvas.addEventListener('mousedown', (e) => {
+  drawing = true;
+  const [x, y] = getPos(e);
+  lastX = x; lastY = y;
+  carveRake(x, y, parseInt(slider.value));
+  render();
+});
+
+canvas.addEventListener('mousemove', (e) => {
+  const [x, y] = getPos(e);
+  mouseX = x; mouseY = y;
+  onCanvas = true;
+  if (drawing) {
+    strokeTo(x, y);
+  }
+  render();
+});
+
+// Scroll wheel rotates the rake
+canvas.addEventListener('wheel', (e) => {
+  e.preventDefault();
+  rakeAngle += (e.deltaY > 0 ? 1 : -1) * 0.15;
+  render();
+}, { passive: false });
+
+canvas.addEventListener('mouseup', () => { drawing = false; });
+canvas.addEventListener('mouseleave', () => {
+  drawing = false;
+  onCanvas = false;
+  render();
+});
+canvas.addEventListener('mouseenter', () => { onCanvas = true; });
+
+// Touch events
+canvas.addEventListener('touchstart', (e) => {
+  e.preventDefault();
+  drawing = true;
+  const [x, y] = getPos(e);
+  lastX = x; lastY = y;
+  mouseX = x; mouseY = y;
+  onCanvas = true;
+  carveRake(x, y, parseInt(slider.value));
+  render();
+});
+
+canvas.addEventListener('touchmove', (e) => {
+  e.preventDefault();
+  const [x, y] = getPos(e);
+  mouseX = x; mouseY = y;
+  if (drawing) {
+    strokeTo(x, y);
+  }
+  render();
+});
+
+canvas.addEventListener('touchend', (e) => {
+  e.preventDefault();
+  drawing = false;
+  onCanvas = false;
+  render();
+});
+
+clearBtn.addEventListener('click', clearSand);
+
+// Init
+generateSandTexture();
+render();
+</script>
+</body>
+</html>
