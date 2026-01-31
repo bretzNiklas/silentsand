@@ -98,7 +98,10 @@
 <body>
 <h1>Silent Sands</h1>
 <canvas id="garden"></canvas>
-<div class="controls">
+<div style="width: 100%; max-width: 880px; margin-top: 16px; padding: 0 20px;">
+  <button id="clearBtn" style="width: 100%;">Clear Sand</button>
+</div>
+<div class="controls" style="margin-top: 16px;">
   <div class="tine-controls">
     <span>Tines</span>
     <input type="range" id="tineSlider" min="1" max="7" step="1" value="4">
@@ -110,9 +113,8 @@
   </div>
   <div class="size-controls">
     <span>Size</span>
-    <input type="range" id="sizeSlider" min="4" max="20" value="12">
+    <input type="range" id="sizeSlider" min="4" max="20" value="6">
   </div>
-  <button id="clearBtn">Clear Sand</button>
   <button id="settingsBtn">Settings</button>
 </div>
 <div id="settingsPanel" style="display:none;">
