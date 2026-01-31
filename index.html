@@ -51,9 +51,20 @@
     letter-spacing: 0.15em;
     text-transform: uppercase;
     transition: all 0.3s;
+    position: relative;
+    overflow: hidden;
   }
   button:hover { background: #5a4a35; color: #e8d5b7; }
   button.active { background: #5a4a35; color: #e8d5b7; }
+  #clearBtn .fill {
+    position: absolute; left: 0; top: 0; bottom: 0; width: 0;
+    background: #c2a67d44; pointer-events: none;
+  }
+  #clearBtn.holding .fill {
+    animation: clearFill 0.3s linear forwards;
+  }
+  @keyframes clearFill { from { width: 0; } to { width: 100%; } }
+  #clearBtn span { position: relative; pointer-events: none; }
   .size-controls { display: flex; align-items: center; gap: 8px; }
   .size-controls span { color: #5a4a3588; font-size: 12px; letter-spacing: 0.1em; }
   input[type="range"] {
@@ -74,6 +85,22 @@
   .tine-controls { display: flex; align-items: center; gap: 8px; }
   .tine-controls span { color: #5a4a3588; font-size: 12px; letter-spacing: 0.1em; }
   .tine-controls .tine-label { color: #c2a67d; min-width: 8px; text-align: center; }
+  .info-i {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 13px; height: 13px; border-radius: 50%;
+    border: 1px solid #5a4a3566; color: #5a4a3588;
+    font-size: 9px; font-style: italic; font-family: Georgia, serif;
+    cursor: default; position: relative; flex-shrink: 0;
+  }
+  .info-i .info-tip {
+    display: none; position: absolute; bottom: 20px; left: 50%;
+    transform: translateX(-50%); white-space: nowrap;
+    background: #2a2218; color: #c2a67dcc; font-style: normal;
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    font-size: 11px; padding: 4px 8px; border-radius: 4px;
+    pointer-events: none; letter-spacing: 0.02em; z-index: 10;
+  }
+  .info-i:hover .info-tip { display: block; }
 </style>
 </head>
 <body>
@@ -93,31 +120,75 @@
     <span>Size</span>
     <input type="range" id="sizeSlider" min="4" max="20" value="12">
   </div>
-  <button id="clearBtn">Clear Sand</button>
+  <button id="clearBtn"><div class="fill"></div><span>Clear Sand</span></button>
+  <button id="settingsBtn">Settings</button>
 </div>
-<div class="controls" style="margin-top:8px;border-top:1px solid #5a4a3544;padding-top:8px;">
-  <div class="size-controls">
-    <span>Depth</span>
-    <input type="range" id="dbgDepth" min="0.05" max="0.60" step="0.01" value="0.18">
-    <span class="tine-label" id="dbgDepthLabel">0.18</span>
+<div id="settingsPanel" style="display:none;">
+  <div class="controls" style="margin-top:8px;border-top:1px solid #5a4a3544;padding-top:8px;">
+    <div class="size-controls">
+      <span>Depth</span>
+      <input type="range" id="dbgDepth" min="0.05" max="0.60" step="0.01" value="0.38">
+      <span class="tine-label" id="dbgDepthLabel">0.38</span>
+    </div>
+    <div class="size-controls">
+      <span>Rim</span>
+      <input type="range" id="dbgRim" min="0.02" max="0.25" step="0.01" value="0.12">
+      <span class="tine-label" id="dbgRimLabel">0.12</span>
+    </div>
+    <div class="size-controls">
+      <span>Light</span>
+      <input type="range" id="dbgLight" min="0.10" max="0.80" step="0.01" value="0.40">
+      <span class="tine-label" id="dbgLightLabel">0.40</span>
+    </div>
+    <div class="size-controls">
+      <span>Blend</span>
+      <input type="range" id="dbgBlend" min="0.20" max="0.80" step="0.01" value="0.55">
+      <span class="tine-label" id="dbgBlendLabel">0.55</span>
+    </div>
   </div>
-  <div class="size-controls">
-    <span>Rim</span>
-    <input type="range" id="dbgRim" min="0.02" max="0.25" step="0.01" value="0.12">
-    <span class="tine-label" id="dbgRimLabel">0.12</span>
-  </div>
-  <div class="size-controls">
-    <span>Light</span>
-    <input type="range" id="dbgLight" min="0.10" max="0.80" step="0.01" value="0.40">
-    <span class="tine-label" id="dbgLightLabel">0.40</span>
-  </div>
-  <div class="size-controls">
-    <span>Blend</span>
-    <input type="range" id="dbgBlend" min="0.20" max="0.80" step="0.01" value="0.55">
-    <span class="tine-label" id="dbgBlendLabel">0.55</span>
+  <div class="controls" style="margin-top:8px;border-top:1px solid #5a4a3544;padding-top:8px;">
+    <div class="size-controls">
+      <span>Step</span>
+      <input type="range" id="dbgStep" min="0.03" max="0.50" step="0.01" value="0.22">
+      <span class="tine-label" id="dbgStepLabel">0.22</span>
+      <span class="info-i">i<span class="info-tip">Stroke density. Higher = faster, coarser</span></span>
+    </div>
+    <div class="size-controls">
+      <span>Spread</span>
+      <input type="range" id="dbgSpread" min="1" max="4" step="1" value="1">
+      <span class="tine-label" id="dbgSpreadLabel">1</span>
+      <span class="info-i">i<span class="info-tip">Sand spread radius. Higher = slower, wider piles</span></span>
+    </div>
+    <div class="size-controls">
+      <span>FwdD</span>
+      <input type="range" id="dbgFwdD" min="0.20" max="2.00" step="0.01" value="0.59">
+      <span class="tine-label" id="dbgFwdDLabel">0.59</span>
+      <span class="info-i">i<span class="info-tip">Forward push distance. Higher = sand thrown further ahead</span></span>
+    </div>
+    <div class="size-controls">
+      <span>SideD</span>
+      <input type="range" id="dbgSideD" min="0.10" max="1.50" step="0.01" value="0.66">
+      <span class="tine-label" id="dbgSideDLabel">0.66</span>
+      <span class="info-i">i<span class="info-tip">Side push distance. Higher = wider rim banks</span></span>
+    </div>
+    <div class="size-controls">
+      <span>NormD</span>
+      <input type="range" id="dbgNormD" min="1" max="6" step="1" value="4">
+      <span class="tine-label" id="dbgNormDLabel">4</span>
+      <span class="info-i">i<span class="info-tip">Lighting sample distance. Higher = smoother, softer shading</span></span>
+    </div>
+    <div class="size-controls">
+      <span>Noise</span>
+      <input type="range" id="dbgNoise" min="0.00" max="1.00" step="0.01" value="0.89">
+      <span class="tine-label" id="dbgNoiseLabel">0.89</span>
+      <span class="info-i">i<span class="info-tip">Sand grain texture. Higher = heavier grain</span></span>
+    </div>
   </div>
 </div>
-<div style="margin-top:10px;color:#5a4a3544;font-size:11px;letter-spacing:0.1em;">scroll wheel to rotate rake</div>
+<div style="margin-top:10px;display:flex;gap:16px;align-items:center;">
+  <span style="color:#5a4a3599;font-size:11px;letter-spacing:0.1em;">scroll wheel to rotate rake</span>
+  <span id="perfReadout" style="color:#5a4a35aa;font-size:11px;letter-spacing:0.05em;font-family:monospace;"></span>
+</div>
 
 <script>
 const canvas = document.getElementById('garden');
@@ -135,6 +206,35 @@ const dbgLight = document.getElementById('dbgLight');
 const dbgLightLabel = document.getElementById('dbgLightLabel');
 const dbgBlend = document.getElementById('dbgBlend');
 const dbgBlendLabel = document.getElementById('dbgBlendLabel');
+const dbgStep = document.getElementById('dbgStep');
+const dbgStepLabel = document.getElementById('dbgStepLabel');
+const dbgSpread = document.getElementById('dbgSpread');
+const dbgSpreadLabel = document.getElementById('dbgSpreadLabel');
+const dbgFwdD = document.getElementById('dbgFwdD');
+const dbgFwdDLabel = document.getElementById('dbgFwdDLabel');
+const dbgSideD = document.getElementById('dbgSideD');
+const dbgSideDLabel = document.getElementById('dbgSideDLabel');
+const dbgNormD = document.getElementById('dbgNormD');
+const dbgNormDLabel = document.getElementById('dbgNormDLabel');
+const dbgNoise = document.getElementById('dbgNoise');
+const dbgNoiseLabel = document.getElementById('dbgNoiseLabel');
+const perfReadout = document.getElementById('perfReadout');
+
+// --- Cached slider values (read from DOM once, then updated via events) ---
+let cachedTineRadius = parseInt(slider.value);
+let cachedTineCount = parseInt(tineSlider.value);
+let cachedGapMul = parseFloat(gapSlider.value);
+let cachedDepth = parseFloat(dbgDepth.value);
+let cachedRim = parseFloat(dbgRim.value);
+let cachedLight = parseFloat(dbgLight.value);
+let cachedBlend = parseFloat(dbgBlend.value);
+let cachedStep = parseFloat(dbgStep.value);
+let cachedSpreadR = parseInt(dbgSpread.value);
+let cachedFwdD = parseFloat(dbgFwdD.value);
+let cachedSideD = parseFloat(dbgSideD.value);
+let cachedNormD = parseInt(dbgNormD.value);
+let cachedNoise = parseFloat(dbgNoise.value);
+
 const W = Math.min(880, window.innerWidth - 40);
 const H = Math.min(660, window.innerHeight - 120);
 canvas.width = W;
@@ -160,20 +260,39 @@ const noiseMap = new Float32Array(totalPixels);
 const imageData = ctx.createImageData(W, H);
 const imageDataBuf = imageData.data;
 
-// --- Pre-compute gaussian kernel (optimization #3) ---
-const SPREAD_R = 2;
-const SPREAD_SIGMA = 1.5;
-const gaussKernel = []; // [{dx, dy, w}, ...]
-let gaussTotal = 0;
-for (let sy = -SPREAD_R; sy <= SPREAD_R; sy++) {
-  for (let sx = -SPREAD_R; sx <= SPREAD_R; sx++) {
-    if (sx * sx + sy * sy > SPREAD_R * SPREAD_R) continue;
-    const w = Math.exp(-(sx * sx + sy * sy) / (2 * SPREAD_SIGMA * SPREAD_SIGMA));
-    gaussKernel.push({ dx: sx, dy: sy, w });
-    gaussTotal += w;
+// --- Pre-compute gaussian kernel as flat typed arrays ---
+const MAX_KERNEL = 81; // (2*4+1)^2 = max possible entries
+let gaussDx = new Int8Array(MAX_KERNEL);
+let gaussDy = new Int8Array(MAX_KERNEL);
+let gaussW = new Float32Array(MAX_KERNEL);
+let gaussLen = 0;
+let builtSpreadR = -1;
+
+function rebuildGaussKernel() {
+  const r = cachedSpreadR;
+  if (r === builtSpreadR) return;
+  builtSpreadR = r;
+  const sigma = r * 0.75;
+  const invTwoSigma2 = 1 / (2 * sigma * sigma);
+  let count = 0;
+  let total = 0;
+  for (let sy = -r; sy <= r; sy++) {
+    for (let sx = -r; sx <= r; sx++) {
+      const d2 = sx * sx + sy * sy;
+      if (d2 > r * r) continue;
+      const w = Math.exp(-d2 * invTwoSigma2);
+      gaussDx[count] = sx;
+      gaussDy[count] = sy;
+      gaussW[count] = w;
+      total += w;
+      count++;
+    }
   }
+  const invTotal = 1 / total;
+  for (let i = 0; i < count; i++) gaussW[i] *= invTotal;
+  gaussLen = count;
 }
-for (const k of gaussKernel) k.w /= gaussTotal;
+rebuildGaussKernel();
 
 // --- Pre-allocated displacement buffers (optimization #4) ---
 const MAX_R = 20;
@@ -257,12 +376,12 @@ function clearSand() {
 
 // --- Tine helpers ---
 function getTineCount() {
-  return parseInt(tineSlider.value);
+  return cachedTineCount;
 }
 
 function getRakeTineOffsets(tineRadius) {
-  const count = getTineCount();
-  const spacing = parseFloat(gapSlider.value) * tineRadius;
+  const count = cachedTineCount;
+  const spacing = cachedGapMul * tineRadius;
   const offsets = [];
   for (let i = 0; i < count; i++) {
     offsets.push((i - (count - 1) / 2) * spacing);
@@ -307,8 +426,8 @@ let tineProfile = null; // Float32Array, size (2*r+1)²
 let tineProfileStride = 0;
 
 function rebuildTineProfile(r) {
-  const curDepth = parseFloat(dbgDepth.value);
-  const curRim = parseFloat(dbgRim.value);
+  const curDepth = cachedDepth;
+  const curRim = cachedRim;
   if (r === tineProfileR && curDepth === tineProfileDepth && curRim === tineProfileRim) return;
   tineProfileR = r;
   tineProfileDepth = curDepth;
@@ -361,23 +480,29 @@ function carveTine(x, y, radius, dirX, dirY) {
   const perpX = -ndy;
   const perpY = ndx;
 
+  // Cache blend value and pre-compute inverse
+  const blendTarget = cachedBlend;
+  const blendInv = 1 - blendTarget;
+
   // Pass 1: figure out how much sand to remove at each pixel
   let dispCount = 0;
 
   for (let dy = -r; dy <= r; dy++) {
+    const py = iy + dy;
+    if (py < 0 || py >= H) continue;
+    const rowBase = py * W;
+    const profileRowBase = (dy + r) * tineProfileStride + r;
     for (let dx = -r; dx <= r; dx++) {
       const px = ix + dx;
-      const py = iy + dy;
-      if (px < 0 || px >= W || py < 0 || py >= H) continue;
+      if (px < 0 || px >= W) continue;
 
-      const targetHeight = tineProfile[(dy + r) * tineProfileStride + (dx + r)];
+      const targetHeight = tineProfile[profileRowBase + dx];
       if (targetHeight < 0) continue; // outside radius
 
-      const idx = py * W + px;
+      const idx = rowBase + px;
       const currentH = sandHeight[idx];
 
-      const blendTarget = parseFloat(dbgBlend.value);
-      const blended = currentH * (1 - blendTarget) + targetHeight * blendTarget;
+      const blended = currentH * blendInv + targetHeight * blendTarget;
       if (currentH > blended) {
         const displaced = currentH - blended;
         dispIdx[dispCount] = idx;
@@ -388,24 +513,24 @@ function carveTine(x, y, radius, dirX, dirY) {
         dispCount++;
         sandHeight[idx] = blended;
       }
-      // Don't raise sand that was already carved lower —
-      // prevents scallop/ribbon artifacts from overlapping stamps
     }
   }
 
   // Mark the carve area dirty
   markDirty(ix, iy, r + 2);
 
-  // Pass 2: distribute displaced sand using pre-computed gaussian kernel
-  const fwdDist = r * 1.0;
-  const sideDist = r * 0.75;
+  // Pass 2: distribute displaced sand using flat gaussian kernel arrays
+  const fwdDist = r * cachedFwdD;
+  const sideDist = r * cachedSideD;
+  const spreadR = cachedSpreadR;
   // Deposit spread radius for dirty marking
-  const depositMarkR = SPREAD_R + 2;
+  const depositMarkR = spreadR + 2;
   // Interior bounds — if deposit center is inside these, all kernel entries are in-bounds
-  const interiorMinX = SPREAD_R;
-  const interiorMinY = SPREAD_R;
-  const interiorMaxX = W - 1 - SPREAD_R;
-  const interiorMaxY = H - 1 - SPREAD_R;
+  const interiorMinX = spreadR;
+  const interiorMinY = spreadR;
+  const interiorMaxX = W - 1 - spreadR;
+  const interiorMaxY = H - 1 - spreadR;
+  const kLen = gaussLen;
 
   for (let i = 0; i < dispCount; i++) {
     const srcIdx = dispIdx[i];
@@ -442,25 +567,23 @@ function carveTine(x, y, radius, dirX, dirY) {
       let invClipped = 1.0;
       if (!isInterior) {
         let clippedTotal = 0;
-        for (let ki = 0; ki < gaussKernel.length; ki++) {
-          const gk = gaussKernel[ki];
-          const px = cx + gk.dx;
-          const py = cy + gk.dy;
+        for (let ki = 0; ki < kLen; ki++) {
+          const px = cx + gaussDx[ki];
+          const py = cy + gaussDy[ki];
           if (px >= 0 && px < W && py >= 0 && py < H) {
-            clippedTotal += gk.w;
+            clippedTotal += gaussW[ki];
           }
         }
         if (clippedTotal < 0.001) continue;
         invClipped = 1 / clippedTotal;
       }
 
-      for (let ki = 0; ki < gaussKernel.length; ki++) {
-        const gk = gaussKernel[ki];
-        const px = cx + gk.dx;
-        const py = cy + gk.dy;
+      for (let ki = 0; ki < kLen; ki++) {
+        const px = cx + gaussDx[ki];
+        const py = cy + gaussDy[ki];
         if (px < 0 || px >= W || py < 0 || py >= H) continue;
 
-        const frac = gk.w * invClipped;
+        const frac = gaussW[ki] * invClipped;
         const cellAmount = amount * frac;
         const cellIdx = py * W + px;
         const destH = sandHeight[cellIdx];
@@ -491,24 +614,39 @@ function carveRake(x, y, tineRadius, dirX, dirY) {
   }
 }
 
-// --- Pour tool (optimization #6: sqrt -> squared comparison) ---
+// --- Render timing ---
+let carveTimeAccum = 0;
+let lastRenderTime = 0;
+let lastFrameTs = 0;
+let lastFps = 0;
+
 // --- Render (optimization #2: dirty-region, #5: reused ImageData) ---
 function render() {
+  const renderStart = performance.now();
   const d = imageDataBuf;
   const lightX = -0.7;
   const lightY = -0.7;
 
-  // Expand dirty rect by 4 for normal sampling neighbors
-  const rMinX = Math.max(0, dirtyMinX - 4);
-  const rMinY = Math.max(0, dirtyMinY - 4);
-  const rMaxX = Math.min(W - 1, dirtyMaxX + 4);
-  const rMaxY = Math.min(H - 1, dirtyMaxY + 4);
+  // Cache slider values for this frame
+  const lightMul = cachedLight;
+  const noiseMul = cachedNoise;
+  const normD = cachedNormD;
+  const normDW = normD * W;
+  const invNormD2 = 1 / (normD * 2);
+
+  // Expand dirty rect by normD+1 for normal sampling neighbors
+  const normPad = normD + 1;
+  const rMinX = Math.max(0, dirtyMinX - normPad);
+  const rMinY = Math.max(0, dirtyMinY - normPad);
+  const rMaxX = Math.min(W - 1, dirtyMaxX + normPad);
+  const rMaxY = Math.min(H - 1, dirtyMaxY + normPad);
 
   if (!dirtyEmpty) {
     for (let y = rMinY; y <= rMaxY; y++) {
+      const yW = y * W;
       for (let x = rMinX; x <= rMaxX; x++) {
-        const idx = y * W + x;
-        const pi = idx * 4;
+        const idx = yW + x;
+        const pi = idx << 2;
 
         const h = sandHeight[idx];
         const baseR = sandR[idx];
@@ -516,20 +654,21 @@ function render() {
         const baseB = sandB[idx];
 
         let lighting = 1.0;
-        if (x > 2 && x < W - 3 && y > 2 && y < H - 3) {
-          const dhdx = (sandHeight[idx + 3] - sandHeight[idx - 3]) / 6;
-          const dhdy = (sandHeight[idx + 3 * W] - sandHeight[idx - 3 * W]) / 6;
+        if (x >= normD && x < W - normD && y >= normD && y < H - normD) {
+          const dhdx = (sandHeight[idx + normD] - sandHeight[idx - normD]) * invNormD2;
+          const dhdy = (sandHeight[idx + normDW] - sandHeight[idx - normDW]) * invNormD2;
           const dot = -(dhdx * lightX + dhdy * lightY);
-          lighting = 1.0 + dot * parseFloat(dbgLight.value);
+          lighting = 1.0 + dot * lightMul;
         }
 
-        const heightBrightness = 0.82 + 0.18 * Math.min(Math.max(h, 0), 2);
+        const heightBrightness = 0.82 + 0.18 * (h < 0 ? 0 : h > 2 ? 2 : h);
         const shade = lighting * heightBrightness;
-        const noise = noiseMap[idx] * shade * 0.35;
+        const noise = noiseMap[idx] * shade * noiseMul;
 
-        d[pi]     = Math.max(0, Math.min(255, baseR * shade + noise));
-        d[pi + 1] = Math.max(0, Math.min(255, baseG * shade + noise));
-        d[pi + 2] = Math.max(0, Math.min(255, baseB * shade + noise));
+        // Uint8ClampedArray auto-clamps to [0, 255] — no Math.max/min needed
+        d[pi]     = baseR * shade + noise;
+        d[pi + 1] = baseG * shade + noise;
+        d[pi + 2] = baseB * shade + noise;
         d[pi + 3] = 255;
       }
     }
@@ -538,10 +677,6 @@ function render() {
     const dw = rMaxX - rMinX + 1;
     const dh = rMaxY - rMinY + 1;
     ctx.putImageData(imageData, 0, 0, rMinX, rMinY, dw, dh);
-  } else {
-    // Nothing changed — just redraw cursor overlay on top of existing canvas
-    // Re-blit only the cursor area to clear previous cursor
-    // (full putImageData skipped since nothing is dirty)
   }
 
   resetDirty();
@@ -549,7 +684,7 @@ function render() {
   // Draw cursor
   if (onCanvas) {
     ctx.save();
-    const tineRadius = parseInt(slider.value);
+    const tineRadius = cachedTineRadius;
     const offsets = getRakeTineOffsets(tineRadius);
     const [perpX, perpY] = getRakePerp();
 
@@ -578,11 +713,24 @@ function render() {
     }
     ctx.restore();
   }
+
+  // Update performance readout
+  const renderEnd = performance.now();
+  lastRenderTime = renderEnd - renderStart;
+  const now = renderEnd;
+  if (lastFrameTs > 0) {
+    const dt = now - lastFrameTs;
+    lastFps = dt > 0 ? (1000 / dt) : 0;
+  }
+  lastFrameTs = now;
+  perfReadout.textContent = 'c:' + carveTimeAccum.toFixed(1) + ' r:' + lastRenderTime.toFixed(1) + 'ms ' + Math.round(lastFps) + 'fps';
+  carveTimeAccum = 0;
 }
 
 // --- Stroke handling ---
 function strokeTo(x, y) {
-  const tineRadius = parseInt(slider.value);
+  const tineRadius = cachedTineRadius;
+  const stepFrac = cachedStep;
   const dx = x - lastX;
   const dy = y - lastY;
   const dist = Math.sqrt(dx * dx + dy * dy);
@@ -591,14 +739,16 @@ function strokeTo(x, y) {
   strokeDX = dx;
   strokeDY = dy;
 
-  const steps = Math.max(1, Math.floor(dist / Math.max(1, tineRadius * 0.07)));
+  const steps = Math.max(1, Math.floor(dist / Math.max(1, tineRadius * stepFrac)));
 
+  const carveStart = performance.now();
   for (let i = 0; i <= steps; i++) {
     const t = i / steps;
     const cx = lastX + dx * t;
     const cy = lastY + dy * t;
     carveRake(cx, cy, tineRadius, strokeDX, strokeDY);
   }
+  carveTimeAccum += performance.now() - carveStart;
 
   lastX = x;
   lastY = y;
@@ -607,7 +757,7 @@ function strokeTo(x, y) {
 // --- Cursor dirty helper ---
 function markCursorDirty() {
   if (!onCanvas) return;
-  const tineRadius = parseInt(slider.value);
+  const tineRadius = cachedTineRadius;
   const offsets = getRakeTineOffsets(tineRadius);
   const [px, py] = getRakePerp();
   for (const offset of offsets) {
@@ -616,37 +766,78 @@ function markCursorDirty() {
 }
 
 // --- Event listeners ---
+slider.addEventListener('input', () => {
+  cachedTineRadius = parseInt(slider.value);
+  markCursorDirty();
+  requestRender();
+});
+
 tineSlider.addEventListener('input', () => {
+  cachedTineCount = parseInt(tineSlider.value);
   tineLabel.textContent = tineSlider.value;
   markCursorDirty();
   requestRender();
 });
 
 gapSlider.addEventListener('input', () => {
+  cachedGapMul = parseFloat(gapSlider.value);
   markCursorDirty();
   requestRender();
 });
 
 // Debug slider listeners
 dbgDepth.addEventListener('input', () => {
+  cachedDepth = parseFloat(dbgDepth.value);
   dbgDepthLabel.textContent = dbgDepth.value;
   tineProfileR = -1; // force profile rebuild
   markFullDirty();
   requestRender();
 });
 dbgRim.addEventListener('input', () => {
+  cachedRim = parseFloat(dbgRim.value);
   dbgRimLabel.textContent = dbgRim.value;
   tineProfileR = -1;
   markFullDirty();
   requestRender();
 });
 dbgLight.addEventListener('input', () => {
+  cachedLight = parseFloat(dbgLight.value);
   dbgLightLabel.textContent = dbgLight.value;
   markFullDirty();
   requestRender();
 });
 dbgBlend.addEventListener('input', () => {
+  cachedBlend = parseFloat(dbgBlend.value);
   dbgBlendLabel.textContent = dbgBlend.value;
+});
+dbgStep.addEventListener('input', () => {
+  cachedStep = parseFloat(dbgStep.value);
+  dbgStepLabel.textContent = dbgStep.value;
+});
+dbgSpread.addEventListener('input', () => {
+  cachedSpreadR = parseInt(dbgSpread.value);
+  dbgSpreadLabel.textContent = dbgSpread.value;
+  rebuildGaussKernel();
+});
+dbgFwdD.addEventListener('input', () => {
+  cachedFwdD = parseFloat(dbgFwdD.value);
+  dbgFwdDLabel.textContent = dbgFwdD.value;
+});
+dbgSideD.addEventListener('input', () => {
+  cachedSideD = parseFloat(dbgSideD.value);
+  dbgSideDLabel.textContent = dbgSideD.value;
+});
+dbgNormD.addEventListener('input', () => {
+  cachedNormD = parseInt(dbgNormD.value);
+  dbgNormDLabel.textContent = dbgNormD.value;
+  markFullDirty();
+  requestRender();
+});
+dbgNoise.addEventListener('input', () => {
+  cachedNoise = parseFloat(dbgNoise.value);
+  dbgNoiseLabel.textContent = dbgNoise.value;
+  markFullDirty();
+  requestRender();
 });
 
 // Mouse events
@@ -655,7 +846,9 @@ canvas.addEventListener('mousedown', (e) => {
   const [x, y] = getPos(e);
   lastX = x; lastY = y;
   strokeDX = 0; strokeDY = 0;
-  carveRake(x, y, parseInt(slider.value), 0, 0);
+  const carveStart = performance.now();
+  carveRake(x, y, cachedTineRadius, 0, 0);
+  carveTimeAccum += performance.now() - carveStart;
   requestRender();
 });
 
@@ -703,7 +896,9 @@ canvas.addEventListener('touchstart', (e) => {
   mouseX = x; mouseY = y;
   onCanvas = true;
   strokeDX = 0; strokeDY = 0;
-  carveRake(x, y, parseInt(slider.value), 0, 0);
+  const carveStart = performance.now();
+  carveRake(x, y, cachedTineRadius, 0, 0);
+  carveTimeAccum += performance.now() - carveStart;
   requestRender();
 });
 
@@ -727,9 +922,68 @@ canvas.addEventListener('touchend', (e) => {
   requestRender();
 });
 
-clearBtn.addEventListener('click', clearSand);
+// Hold-to-clear: hold for 1s to clear sand
+let clearTimer = null;
+function clearStart() {
+  clearBtn.classList.add('holding');
+  clearTimer = setTimeout(() => {
+    clearBtn.classList.remove('holding');
+    clearBtn.querySelector('.fill').style.width = '0';
+    clearSand();
+  }, 300);
+}
+function clearCancel() {
+  if (clearTimer) { clearTimeout(clearTimer); clearTimer = null; }
+  clearBtn.classList.remove('holding');
+  clearBtn.querySelector('.fill').style.width = '0';
+}
+clearBtn.addEventListener('mousedown', clearStart);
+clearBtn.addEventListener('mouseup', clearCancel);
+clearBtn.addEventListener('mouseleave', clearCancel);
+clearBtn.addEventListener('touchstart', (e) => { e.preventDefault(); clearStart(); });
+clearBtn.addEventListener('touchend', clearCancel);
+clearBtn.addEventListener('touchcancel', clearCancel);
+
+const settingsBtn = document.getElementById('settingsBtn');
+const settingsPanel = document.getElementById('settingsPanel');
+settingsBtn.addEventListener('click', () => {
+  const open = settingsPanel.style.display !== 'none';
+  settingsPanel.style.display = open ? 'none' : '';
+  settingsBtn.classList.toggle('active', !open);
+});
 
 // --- Init ---
+// Force sliders to their HTML default values (override browser autofill)
+document.querySelectorAll('input[type="range"]').forEach(el => {
+  el.value = el.getAttribute('value');
+});
+// Re-read cached values from the now-correct sliders
+cachedTineRadius = parseInt(slider.value);
+cachedTineCount = parseInt(tineSlider.value);
+cachedGapMul = parseFloat(gapSlider.value);
+cachedDepth = parseFloat(dbgDepth.value);
+cachedRim = parseFloat(dbgRim.value);
+cachedLight = parseFloat(dbgLight.value);
+cachedBlend = parseFloat(dbgBlend.value);
+cachedStep = parseFloat(dbgStep.value);
+cachedSpreadR = parseInt(dbgSpread.value);
+cachedFwdD = parseFloat(dbgFwdD.value);
+cachedSideD = parseFloat(dbgSideD.value);
+cachedNormD = parseInt(dbgNormD.value);
+cachedNoise = parseFloat(dbgNoise.value);
+// Sync labels
+tineLabel.textContent = tineSlider.value;
+dbgDepthLabel.textContent = dbgDepth.value;
+dbgRimLabel.textContent = dbgRim.value;
+dbgLightLabel.textContent = dbgLight.value;
+dbgBlendLabel.textContent = dbgBlend.value;
+dbgStepLabel.textContent = dbgStep.value;
+dbgSpreadLabel.textContent = dbgSpread.value;
+dbgFwdDLabel.textContent = dbgFwdD.value;
+dbgSideDLabel.textContent = dbgSideD.value;
+dbgNormDLabel.textContent = dbgNormD.value;
+dbgNoiseLabel.textContent = dbgNoise.value;
+rebuildGaussKernel();
 clearSand();
 </script>
 </body>
