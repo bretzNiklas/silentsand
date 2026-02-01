@@ -31,23 +31,26 @@ function saveState() {
 
 function undo() {
   if (undoStack.length === 0) return;
-  
+  tlResumeForInteraction();
+
   // Save current state to redo stack before undoing
   redoStack.push(getCurrentState());
-  
+
   const state = undoStack.pop();
   sandHeight.set(state.h);
   sandR.set(state.r);
   sandG.set(state.g);
   sandB.set(state.b);
-  
+
   markFullDirty();
   requestRender();
   updateHistoryBtns();
+  tlScheduleIdlePause();
 }
 
 function redo() {
   if (redoStack.length === 0) return;
+  tlResumeForInteraction();
 
   // Save current state to undo stack before redoing
   if (undoStack.length >= MAX_UNDO) {
@@ -64,6 +67,7 @@ function redo() {
   markFullDirty();
   requestRender();
   updateHistoryBtns();
+  tlScheduleIdlePause();
 }
 
 function updateHistoryBtns() {
@@ -277,6 +281,7 @@ function generateNoiseMap() {
 
 function clearSand() {
   saveState(); // Save state before clearing
+  tlResumeForInteraction();
   initSand();
   // Add fine random variation for a natural untouched look
   for (let i = 0; i < totalPixels; i++) {
@@ -286,6 +291,7 @@ function clearSand() {
   generateNoiseMap();
   markFullDirty();
   requestRender();
+  tlScheduleIdlePause();
 }
 
 // --- Tine helpers ---
@@ -322,6 +328,19 @@ function getPerpAt(x, y) {
   }
   return getRakePerp();
 }
+
+// --- Timelapse recording state ---
+let tlRecorder = null;
+let tlStream = null;
+let tlChunks = [];
+let tlRecording = false;
+let tlStartTime = 0;
+let tlIdleTimer = null;
+let tlStatusInterval = null;
+let tlBlobSize = 0;
+const TL_IDLE_DELAY = 2000;
+const TL_FPS = 30;
+const TL_MAX_BYTES = 500 * 1024 * 1024; // 500MB
 
 // --- Drawing state ---
 let drawing = false;
@@ -731,6 +750,9 @@ function render() {
     ctx.restore();
   }
 
+  // Draw watermark for timelapse recording
+  tlDrawWatermark();
+
   // Update performance readout
   const renderEnd = performance.now();
   carveTimeAccum = 0;
@@ -801,6 +823,7 @@ canvas.addEventListener('mousedown', (e) => {
   if (e.target !== canvas) return;
   saveState(); // Save state before stroke
   drawing = true;
+  tlResumeForInteraction();
   const [x, y] = getPos(e);
   lastX = x; lastY = y;
   anchorX = x; anchorY = y;
@@ -837,7 +860,7 @@ canvas.addEventListener('wheel', (e) => {
   requestRender();
 }, { passive: false });
 
-canvas.addEventListener('mouseup', () => { drawing = false; });
+canvas.addEventListener('mouseup', () => { drawing = false; tlScheduleIdlePause(); });
 canvas.addEventListener('mouseleave', () => {
   markCursorDirty();
   drawing = false;
@@ -854,6 +877,7 @@ canvas.addEventListener('touchstart', (e) => {
   e.preventDefault();
   saveState(); // Save state before stroke
   drawing = true;
+  tlResumeForInteraction();
   const [x, y] = getPos(e);
   lastX = x; lastY = y;
   anchorX = x; anchorY = y;
@@ -883,6 +907,7 @@ canvas.addEventListener('touchend', (e) => {
   e.preventDefault();
   markCursorDirty();
   drawing = false;
+  tlScheduleIdlePause();
   onCanvas = false;
   requestRender();
 });
@@ -1028,6 +1053,8 @@ function saveSettings() {
   settings.mirrorH = mirrorH;
   settings.mirrorD = mirrorD;
   settings.alignCenter = alignCenter;
+  const tlModeEl = document.getElementById('tlMode');
+  if (tlModeEl) settings.tlMode = tlModeEl.value;
   localStorage.setItem('zenGardenSettings', JSON.stringify(settings));
 }
 
@@ -1056,6 +1083,7 @@ function loadSettings() {
     if (s.mirrorH !== undefined) { mirrorH = s.mirrorH; mirrorHBtn.classList.toggle('active', mirrorH); }
     if (s.mirrorD !== undefined) { mirrorD = s.mirrorD; mirrorDBtn.classList.toggle('active', mirrorD); }
     if (s.alignCenter !== undefined) { alignCenter = s.alignCenter; alignCenterToggle.checked = alignCenter; }
+    if (s.tlMode !== undefined) { const tlModeEl = document.getElementById('tlMode'); if (tlModeEl) tlModeEl.value = s.tlMode; }
     updateSymmetryLines();
   } catch (e) {
     console.warn('Failed to load settings', e);
@@ -1214,6 +1242,218 @@ quickSaveBtn.onclick = async () => {
     quickSaveBtn.textContent = 'Quick Save';
   }
 };
+
+// --- Timelapse Recording ---
+const tlRecordBtn = document.getElementById('tlRecordBtn');
+const tlModeSelect = document.getElementById('tlMode');
+const tlStatusEl = document.getElementById('tlStatus');
+const tlDot = document.getElementById('tlDot');
+
+function tlDrawWatermark() {
+  if (!tlRecording) return;
+  const barH = Math.max(24, Math.round(H * 0.045));
+  ctx.save();
+  // Dark bar
+  ctx.fillStyle = 'rgba(26, 26, 26, 0.78)';
+  ctx.fillRect(0, 0, W, barH);
+  // Subtle bottom edge
+  ctx.fillStyle = 'rgba(90, 74, 53, 0.25)';
+  ctx.fillRect(0, barH - 1, W, 1);
+  // Text
+  const fontSize = Math.max(11, Math.round(barH * 0.46));
+  ctx.font = `300 ${fontSize}px "Segoe UI", system-ui, sans-serif`;
+  ctx.fillStyle = 'rgba(220, 195, 155, 0.95)';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.shadowColor = 'rgba(0, 0, 0, 0.4)';
+  ctx.shadowBlur = 3;
+  ctx.fillText('S I L E N T S A N D . M E', W / 2, barH / 2);
+  ctx.restore();
+}
+
+function tlGetMimeType() {
+  const types = [
+    'video/webm;codecs=vp9',
+    'video/webm;codecs=vp8',
+    'video/webm'
+  ];
+  for (const t of types) {
+    if (MediaRecorder.isTypeSupported(t)) return t;
+  }
+  return '';
+}
+
+function tlStart() {
+  if (typeof MediaRecorder === 'undefined' || !canvas.captureStream) {
+    tlStatusEl.textContent = 'Not supported';
+    return;
+  }
+
+  tlChunks = [];
+  tlBlobSize = 0;
+
+  tlStream = canvas.captureStream(TL_FPS);
+  const mimeType = tlGetMimeType();
+  const options = mimeType ? { mimeType } : {};
+
+  try {
+    tlRecorder = new MediaRecorder(tlStream, options);
+  } catch (e) {
+    tlStatusEl.textContent = 'Not supported';
+    return;
+  }
+
+  tlRecorder.ondataavailable = (e) => {
+    if (e.data && e.data.size > 0) {
+      tlChunks.push(e.data);
+      tlBlobSize += e.data.size;
+      if (tlBlobSize >= TL_MAX_BYTES) {
+        tlStatusEl.textContent = 'Max size reached';
+        tlStop();
+      }
+    }
+  };
+
+  tlRecorder.onstop = tlFinalize;
+
+  tlRecorder.start(1000); // collect data every second
+  tlRecording = true;
+  tlStartTime = Date.now();
+
+  tlRecordBtn.textContent = 'Stop';
+  tlRecordBtn.classList.add('recording');
+  tlDot.style.display = 'inline-block';
+
+  // In interaction mode, pause immediately until user draws
+  if (tlModeSelect.value === 'interaction') {
+    tlRecorder.pause();
+  }
+
+  tlStatusInterval = setInterval(tlUpdateStatus, 500);
+  tlUpdateStatus();
+  markFullDirty();
+  requestRender();
+}
+
+function tlStop() {
+  if (!tlRecorder || !tlRecording) return;
+  tlRecording = false;
+
+  clearInterval(tlStatusInterval);
+  clearTimeout(tlIdleTimer);
+  tlStatusInterval = null;
+  tlIdleTimer = null;
+
+  if (tlRecorder.state !== 'inactive') {
+    tlRecorder.stop();
+  }
+
+  if (tlStream) {
+    tlStream.getTracks().forEach(t => t.stop());
+    tlStream = null;
+  }
+
+  tlRecordBtn.textContent = 'Record';
+  tlRecordBtn.classList.remove('recording');
+  tlDot.style.display = 'none';
+  tlStatusEl.textContent = '';
+  markFullDirty();
+  requestRender();
+}
+
+function tlFinalize() {
+  if (tlChunks.length === 0) return;
+  const blob = new Blob(tlChunks, { type: tlRecorder ? tlRecorder.mimeType : 'video/webm' });
+  tlChunks = [];
+
+  const now = new Date();
+  const pad = (n) => String(n).padStart(2, '0');
+  const filename = `zen-garden-${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}.webm`;
+
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function tlUpdateStatus() {
+  if (!tlRecording) return;
+  const elapsed = Math.floor((Date.now() - tlStartTime) / 1000);
+  const mm = String(Math.floor(elapsed / 60)).padStart(2, '0');
+  const ss = String(elapsed % 60).padStart(2, '0');
+  let text = `${mm}:${ss}`;
+  if (tlModeSelect.value === 'interaction' && tlRecorder && tlRecorder.state === 'paused') {
+    text += ' (paused)';
+  }
+  tlStatusEl.textContent = text;
+}
+
+function tlResumeForInteraction() {
+  if (!tlRecording || tlModeSelect.value !== 'interaction') return;
+  clearTimeout(tlIdleTimer);
+  tlIdleTimer = null;
+  if (tlRecorder && tlRecorder.state === 'paused') {
+    tlRecorder.resume();
+  }
+}
+
+function tlScheduleIdlePause() {
+  if (!tlRecording || tlModeSelect.value !== 'interaction') return;
+  clearTimeout(tlIdleTimer);
+  tlIdleTimer = setTimeout(() => {
+    if (tlRecording && tlRecorder && tlRecorder.state === 'recording') {
+      tlRecorder.pause();
+    }
+  }, TL_IDLE_DELAY);
+}
+
+tlRecordBtn.addEventListener('click', () => {
+  if (tlRecording) {
+    tlStop();
+  } else {
+    tlStart();
+  }
+});
+
+tlModeSelect.addEventListener('change', () => {
+  saveSettings();
+  if (!tlRecording) return;
+  if (tlModeSelect.value === 'interaction') {
+    // Switch to interaction mode: schedule pause if idle
+    tlScheduleIdlePause();
+  } else {
+    // Switch to continuous: resume if paused
+    clearTimeout(tlIdleTimer);
+    tlIdleTimer = null;
+    if (tlRecorder && tlRecorder.state === 'paused') {
+      tlRecorder.resume();
+    }
+  }
+});
+
+// Edge case: warn on page close while recording
+window.addEventListener('beforeunload', (e) => {
+  if (tlRecording) {
+    e.preventDefault();
+    e.returnValue = '';
+  }
+});
+
+// Edge case: pause on tab hidden (interaction mode)
+document.addEventListener('visibilitychange', () => {
+  if (!tlRecording) return;
+  if (document.hidden && tlModeSelect.value === 'interaction') {
+    clearTimeout(tlIdleTimer);
+    tlIdleTimer = null;
+    if (tlRecorder && tlRecorder.state === 'recording') {
+      tlRecorder.pause();
+    }
+  }
+});
 
 // --- Init ---
 setupSliders();

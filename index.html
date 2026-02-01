@@ -79,6 +79,7 @@
     <button class="tab-btn" data-tab="tab-guide">Image</button>
     <button class="tab-btn" data-tab="tab-tuning">Tuning</button>
     <button class="tab-btn" data-tab="tab-saves">Saves</button>
+    <button class="tab-btn" data-tab="tab-record">Record</button>
   </div>
 
   <div id="tab-rake" class="tab-content active">
@@ -220,6 +221,19 @@
     <div id="saveList" style="max-height: 250px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding-right: 4px;">
       <!-- Save items will be injected here -->
       <div style="text-align: center; color: #5a4a35; font-size: 12px; padding: 20px;">No saved gardens yet</div>
+    </div>
+  </div>
+
+  <div id="tab-record" class="tab-content">
+    <div class="controls">
+      <span style="color: #c2a67d; font-size: 12px; letter-spacing: 0.1em; font-weight: 500;">Mode</span>
+      <select id="tlMode">
+        <option value="continuous">Continuous</option>
+        <option value="interaction">On Interaction</option>
+      </select>
+      <button id="tlRecordBtn">Record</button>
+      <span id="tlStatus"></span>
+      <span id="tlDot"></span>
     </div>
   </div>
 </div>

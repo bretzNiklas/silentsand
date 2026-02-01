@@ -243,3 +243,43 @@
     border-color: #ff444466;
     color: #ff4444;
   }
+
+  /* Timelapse recording */
+  #tlDot {
+    display: none;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #ff4444;
+    animation: tlPulse 1.2s ease-in-out infinite;
+  }
+  @keyframes tlPulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+  }
+  #tlMode {
+    background: #2a2218;
+    border: 1px solid #5a4a35;
+    color: #c2a67d;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    letter-spacing: 0.05em;
+    outline: none;
+    cursor: pointer;
+  }
+  #tlRecordBtn.recording {
+    background: #8b000033;
+    color: #ff4444;
+    border-color: #ff444466;
+  }
+  #tlRecordBtn:disabled {
+    opacity: 0.4;
+    cursor: default;
+  }
+  #tlStatus {
+    color: #5a4a35;
+    font-size: 11px;
+    letter-spacing: 0.05em;
+    min-width: 50px;
+  }
