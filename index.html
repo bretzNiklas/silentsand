@@ -377,46 +377,10 @@
 <script>
 const canvas = document.getElementById('garden');
 const ctx = canvas.getContext('2d');
-const slider = document.getElementById('sizeSlider');
 const clearBtn = document.getElementById('clearBtn');
-const tineSlider = document.getElementById('tineSlider');
-const tineLabel = document.getElementById('tineLabel');
-const gapSlider = document.getElementById('gapSlider');
-const dbgDepth = document.getElementById('dbgDepth');
-const dbgDepthLabel = document.getElementById('dbgDepthLabel');
-const dbgRim = document.getElementById('dbgRim');
-const dbgRimLabel = document.getElementById('dbgRimLabel');
-const dbgLight = document.getElementById('dbgLight');
-const dbgLightLabel = document.getElementById('dbgLightLabel');
-const dbgBlend = document.getElementById('dbgBlend');
-const dbgBlendLabel = document.getElementById('dbgBlendLabel');
-const dbgStep = document.getElementById('dbgStep');
-const dbgStepLabel = document.getElementById('dbgStepLabel');
-const dbgSpread = document.getElementById('dbgSpread');
-const dbgSpreadLabel = document.getElementById('dbgSpreadLabel');
-const dbgFwdD = document.getElementById('dbgFwdD');
-const dbgFwdDLabel = document.getElementById('dbgFwdDLabel');
-const dbgSideD = document.getElementById('dbgSideD');
-const dbgSideDLabel = document.getElementById('dbgSideDLabel');
-const dbgNormD = document.getElementById('dbgNormD');
-const dbgNormDLabel = document.getElementById('dbgNormDLabel');
-const dbgNoise = document.getElementById('dbgNoise');
-const dbgNoiseLabel = document.getElementById('dbgNoiseLabel');
 
-// --- Cached slider values (read from DOM once, then updated via events) ---
-let cachedTineRadius = parseInt(slider.value);
-let cachedTineCount = parseInt(tineSlider.value);
-let cachedGapMul = parseFloat(gapSlider.value);
-let cachedDepth = parseFloat(dbgDepth.value);
-let cachedRim = parseFloat(dbgRim.value);
-let cachedLight = parseFloat(dbgLight.value);
-let cachedBlend = parseFloat(dbgBlend.value);
-let cachedStep = parseFloat(dbgStep.value);
-let cachedSpreadR = parseInt(dbgSpread.value);
-let cachedFwdD = parseFloat(dbgFwdD.value);
-let cachedSideD = parseFloat(dbgSideD.value);
-let cachedNormD = parseInt(dbgNormD.value);
-let cachedNoise = parseFloat(dbgNoise.value);
+// --- Cached slider values (optimization #3) ---
+const cached = {};
 
 const W = Math.min(1120, window.innerWidth - 40);
 const H = Math.min(630, window.innerHeight - 120);
@@ -452,7 +416,7 @@ let gaussLen = 0;
 let builtSpreadR = -1;
 
 function rebuildGaussKernel() {
-  const r = cachedSpreadR;
+  const r = cached.spread;
   if (r === builtSpreadR) return;
   builtSpreadR = r;
   const sigma = r * 0.75;
@@ -475,7 +439,6 @@ function rebuildGaussKernel() {
   for (let i = 0; i < count; i++) gaussW[i] *= invTotal;
   gaussLen = count;
 }
-rebuildGaussKernel();
 
 // --- Pre-allocated displacement buffers (optimization #4) ---
 const MAX_R = 20;
@@ -527,6 +490,43 @@ function requestRender() {
   }
 }
 
+// --- Slider config (single source of truth) ---
+const SLIDER_CONFIG = [
+  { id: 'sizeSlider', key: 'tineRadius', parse: parseInt, onChange() { markCursorDirty(); requestRender(); } },
+  { id: 'tineSlider', key: 'tineCount', parse: parseInt, labelId: 'tineLabel', onChange() { markCursorDirty(); requestRender(); } },
+  { id: 'gapSlider', key: 'gapMul', parse: parseFloat, onChange() { markCursorDirty(); requestRender(); } },
+  { id: 'dbgDepth', key: 'depth', parse: parseFloat, labelId: 'dbgDepthLabel', onChange() { tineProfileR = -1; markFullDirty(); requestRender(); } },
+  { id: 'dbgRim', key: 'rim', parse: parseFloat, labelId: 'dbgRimLabel', onChange() { tineProfileR = -1; markFullDirty(); requestRender(); } },
+  { id: 'dbgLight', key: 'light', parse: parseFloat, labelId: 'dbgLightLabel', onChange() { markFullDirty(); requestRender(); } },
+  { id: 'dbgBlend', key: 'blend', parse: parseFloat, labelId: 'dbgBlendLabel' },
+  { id: 'dbgStep', key: 'step', parse: parseFloat, labelId: 'dbgStepLabel' },
+  { id: 'dbgSpread', key: 'spread', parse: parseInt, labelId: 'dbgSpreadLabel', onChange() { rebuildGaussKernel(); } },
+  { id: 'dbgFwdD', key: 'fwdD', parse: parseFloat, labelId: 'dbgFwdDLabel' },
+  { id: 'dbgSideD', key: 'sideD', parse: parseFloat, labelId: 'dbgSideDLabel' },
+  { id: 'dbgNormD', key: 'normD', parse: parseInt, labelId: 'dbgNormDLabel', onChange() { markFullDirty(); requestRender(); } },
+  { id: 'dbgNoise', key: 'noise', parse: parseFloat, labelId: 'dbgNoiseLabel', onChange() { markFullDirty(); requestRender(); } },
+];
+
+const sliderEls = {};
+
+function setupSliders() {
+  for (const def of SLIDER_CONFIG) {
+    const el = document.getElementById(def.id);
+    const labelEl = def.labelId ? document.getElementById(def.labelId) : null;
+    // Reset to HTML default (override browser autofill)
+    el.value = el.getAttribute('value');
+    sliderEls[def.key] = { el, labelEl };
+    cached[def.key] = def.parse(el.value);
+    if (labelEl) labelEl.textContent = el.value;
+
+    el.addEventListener('input', () => {
+      cached[def.key] = def.parse(el.value);
+      if (labelEl) labelEl.textContent = el.value;
+      if (def.onChange) def.onChange();
+    });
+  }
+}
+
 function initSand() {
   const def = SAND_COLORS[0];
   for (let i = 0; i < totalPixels; i++) {
@@ -559,12 +559,12 @@ function clearSand() {
 
 // --- Tine helpers ---
 function getTineCount() {
-  return cachedTineCount;
+  return cached.tineCount;
 }
 
 function getRakeTineOffsets(tineRadius) {
-  const count = cachedTineCount;
-  const spacing = cachedGapMul * tineRadius;
+  const count = cached.tineCount;
+  const spacing = cached.gapMul * tineRadius;
   const offsets = [];
   for (let i = 0; i < count; i++) {
     offsets.push((i - (count - 1) / 2) * spacing);
@@ -609,8 +609,8 @@ let tineProfile = null; // Float32Array, size (2*r+1)²
 let tineProfileStride = 0;
 
 function rebuildTineProfile(r) {
-  const curDepth = cachedDepth;
-  const curRim = cachedRim;
+  const curDepth = cached.depth;
+  const curRim = cached.rim;
   if (r === tineProfileR && curDepth === tineProfileDepth && curRim === tineProfileRim) return;
   tineProfileR = r;
   tineProfileDepth = curDepth;
@@ -664,7 +664,7 @@ function carveTine(x, y, radius, dirX, dirY) {
   const perpY = ndx;
 
   // Cache blend value and pre-compute inverse
-  const blendTarget = cachedBlend;
+  const blendTarget = cached.blend;
   const blendInv = 1 - blendTarget;
 
   // Pass 1: figure out how much sand to remove at each pixel
@@ -703,9 +703,9 @@ function carveTine(x, y, radius, dirX, dirY) {
   markDirty(ix, iy, r + 2);
 
   // Pass 2: distribute displaced sand using flat gaussian kernel arrays
-  const fwdDist = r * cachedFwdD;
-  const sideDist = r * cachedSideD;
-  const spreadR = cachedSpreadR;
+  const fwdDist = r * cached.fwdD;
+  const sideDist = r * cached.sideD;
+  const spreadR = cached.spread;
   // Deposit spread radius for dirty marking
   const depositMarkR = spreadR + 2;
   // Interior bounds — if deposit center is inside these, all kernel entries are in-bounds
@@ -811,9 +811,9 @@ function render() {
   const lightY = -0.7;
 
   // Cache slider values for this frame
-  const lightMul = cachedLight;
-  const noiseMul = cachedNoise;
-  const normD = cachedNormD;
+  const lightMul = cached.light;
+  const noiseMul = cached.noise;
+  const normD = cached.normD;
   const normDW = normD * W;
   const invNormD2 = 1 / (normD * 2);
 
@@ -867,7 +867,7 @@ function render() {
   // Draw cursor
   if (onCanvas) {
     ctx.save();
-    const tineRadius = cachedTineRadius;
+    const tineRadius = cached.tineRadius;
     const offsets = getRakeTineOffsets(tineRadius);
     const [perpX, perpY] = getRakePerp();
 
@@ -904,8 +904,8 @@ function render() {
 
 // --- Stroke handling ---
 function strokeTo(x, y) {
-  const tineRadius = cachedTineRadius;
-  const stepFrac = cachedStep;
+  const tineRadius = cached.tineRadius;
+  const stepFrac = cached.step;
   const dx = x - lastX;
   const dy = y - lastY;
   const dist = Math.sqrt(dx * dx + dy * dy);
@@ -932,88 +932,13 @@ function strokeTo(x, y) {
 // --- Cursor dirty helper ---
 function markCursorDirty() {
   if (!onCanvas) return;
-  const tineRadius = cachedTineRadius;
+  const tineRadius = cached.tineRadius;
   const offsets = getRakeTineOffsets(tineRadius);
   const [px, py] = getRakePerp();
   for (const offset of offsets) {
     markDirty(mouseX + px * offset, mouseY + py * offset, tineRadius + 2);
   }
 }
-
-// --- Event listeners ---
-slider.addEventListener('input', () => {
-  cachedTineRadius = parseInt(slider.value);
-  markCursorDirty();
-  requestRender();
-});
-
-tineSlider.addEventListener('input', () => {
-  cachedTineCount = parseInt(tineSlider.value);
-  tineLabel.textContent = tineSlider.value;
-  markCursorDirty();
-  requestRender();
-});
-
-gapSlider.addEventListener('input', () => {
-  cachedGapMul = parseFloat(gapSlider.value);
-  markCursorDirty();
-  requestRender();
-});
-
-// Debug slider listeners
-dbgDepth.addEventListener('input', () => {
-  cachedDepth = parseFloat(dbgDepth.value);
-  dbgDepthLabel.textContent = dbgDepth.value;
-  tineProfileR = -1; // force profile rebuild
-  markFullDirty();
-  requestRender();
-});
-dbgRim.addEventListener('input', () => {
-  cachedRim = parseFloat(dbgRim.value);
-  dbgRimLabel.textContent = dbgRim.value;
-  tineProfileR = -1;
-  markFullDirty();
-  requestRender();
-});
-dbgLight.addEventListener('input', () => {
-  cachedLight = parseFloat(dbgLight.value);
-  dbgLightLabel.textContent = dbgLight.value;
-  markFullDirty();
-  requestRender();
-});
-dbgBlend.addEventListener('input', () => {
-  cachedBlend = parseFloat(dbgBlend.value);
-  dbgBlendLabel.textContent = dbgBlend.value;
-});
-dbgStep.addEventListener('input', () => {
-  cachedStep = parseFloat(dbgStep.value);
-  dbgStepLabel.textContent = dbgStep.value;
-});
-dbgSpread.addEventListener('input', () => {
-  cachedSpreadR = parseInt(dbgSpread.value);
-  dbgSpreadLabel.textContent = dbgSpread.value;
-  rebuildGaussKernel();
-});
-dbgFwdD.addEventListener('input', () => {
-  cachedFwdD = parseFloat(dbgFwdD.value);
-  dbgFwdDLabel.textContent = dbgFwdD.value;
-});
-dbgSideD.addEventListener('input', () => {
-  cachedSideD = parseFloat(dbgSideD.value);
-  dbgSideDLabel.textContent = dbgSideD.value;
-});
-dbgNormD.addEventListener('input', () => {
-  cachedNormD = parseInt(dbgNormD.value);
-  dbgNormDLabel.textContent = dbgNormD.value;
-  markFullDirty();
-  requestRender();
-});
-dbgNoise.addEventListener('input', () => {
-  cachedNoise = parseFloat(dbgNoise.value);
-  dbgNoiseLabel.textContent = dbgNoise.value;
-  markFullDirty();
-  requestRender();
-});
 
 // Mouse events
 canvas.addEventListener('mousedown', (e) => {
@@ -1023,7 +948,7 @@ canvas.addEventListener('mousedown', (e) => {
   lastX = x; lastY = y;
   strokeDX = 0; strokeDY = 0;
   const carveStart = performance.now();
-  carveRake(x, y, cachedTineRadius, 0, 0);
+  carveRake(x, y, cached.tineRadius, 0, 0);
   carveTimeAccum += performance.now() - carveStart;
   requestRender();
 });
@@ -1074,7 +999,7 @@ canvas.addEventListener('touchstart', (e) => {
   onCanvas = true;
   strokeDX = 0; strokeDY = 0;
   const carveStart = performance.now();
-  carveRake(x, y, cachedTineRadius, 0, 0);
+  carveRake(x, y, cached.tineRadius, 0, 0);
   carveTimeAccum += performance.now() - carveStart;
   requestRender();
 });
@@ -1170,26 +1095,15 @@ tabBtns.forEach(btn => {
 
 // --- Settings Persistence ---
 function saveSettings() {
-  const settings = {
-    tineRadius: slider.value,
-    tineCount: tineSlider.value,
-    gapMul: gapSlider.value,
-    depth: dbgDepth.value,
-    rim: dbgRim.value,
-    light: dbgLight.value,
-    blend: dbgBlend.value,
-    step: dbgStep.value,
-    spread: dbgSpread.value,
-    fwdD: dbgFwdD.value,
-    sideD: dbgSideD.value,
-    normD: dbgNormD.value,
-    noise: dbgNoise.value,
-    guideShow: guideToggle.checked,
-    guideOpacity: guideOpacity.value,
-    guideZoom: guideZoom.value,
-    guideX: guideX.value,
-    guideY: guideY.value
-  };
+  const settings = {};
+  for (const def of SLIDER_CONFIG) {
+    settings[def.key] = sliderEls[def.key].el.value;
+  }
+  settings.guideShow = guideToggle.checked;
+  settings.guideOpacity = guideOpacity.value;
+  settings.guideZoom = guideZoom.value;
+  settings.guideX = guideX.value;
+  settings.guideY = guideY.value;
   localStorage.setItem('zenGardenSettings', JSON.stringify(settings));
 }
 
@@ -1198,27 +1112,19 @@ function loadSettings() {
   if (!saved) return;
   try {
     const s = JSON.parse(saved);
-    if (s.tineRadius) slider.value = s.tineRadius;
-    if (s.tineCount) tineSlider.value = s.tineCount;
-    if (s.gapMul) gapSlider.value = s.gapMul;
-    if (s.depth) dbgDepth.value = s.depth;
-    if (s.rim) dbgRim.value = s.rim;
-    if (s.light) dbgLight.value = s.light;
-    if (s.blend) dbgBlend.value = s.blend;
-    if (s.step) dbgStep.value = s.step;
-    if (s.spread) dbgSpread.value = s.spread;
-    if (s.fwdD) dbgFwdD.value = s.fwdD;
-    if (s.sideD) dbgSideD.value = s.sideD;
-    if (s.normD) dbgNormD.value = s.normD;
-    if (s.noise) dbgNoise.value = s.noise;
-    
+    for (const def of SLIDER_CONFIG) {
+      if (s[def.key] !== undefined) {
+        const { el, labelEl } = sliderEls[def.key];
+        el.value = s[def.key];
+        cached[def.key] = def.parse(el.value);
+        if (labelEl) labelEl.textContent = el.value;
+      }
+    }
     if (s.guideShow !== undefined) guideToggle.checked = s.guideShow;
-    if (s.guideOpacity) guideOpacity.value = s.guideOpacity;
-    if (s.guideZoom) guideZoom.value = s.guideZoom;
-    if (s.guideX) guideX.value = s.guideX;
-    if (s.guideY) guideY.value = s.guideY;
-
-    // Apply guide settings visual state
+    if (s.guideOpacity !== undefined) guideOpacity.value = s.guideOpacity;
+    if (s.guideZoom !== undefined) guideZoom.value = s.guideZoom;
+    if (s.guideX !== undefined) guideX.value = s.guideX;
+    if (s.guideY !== undefined) guideY.value = s.guideY;
     guideOverlay.style.display = guideToggle.checked ? 'block' : 'none';
     guideOverlay.style.opacity = guideOpacity.value / 100;
     updateGuideTransform();
@@ -1232,39 +1138,8 @@ document.getElementById('settingsPanel').addEventListener('input', saveSettings)
 document.getElementById('settingsPanel').addEventListener('change', saveSettings); // for checkbox
 
 // --- Init ---
-// Force sliders to their HTML default values (override browser autofill)
-document.querySelectorAll('input[type="range"]').forEach(el => {
-  el.value = el.getAttribute('value');
-});
-
-loadSettings(); // Override defaults with saved values
-
-// Re-read cached values from the now-correct sliders
-cachedTineRadius = parseInt(slider.value);
-cachedTineCount = parseInt(tineSlider.value);
-cachedGapMul = parseFloat(gapSlider.value);
-cachedDepth = parseFloat(dbgDepth.value);
-cachedRim = parseFloat(dbgRim.value);
-cachedLight = parseFloat(dbgLight.value);
-cachedBlend = parseFloat(dbgBlend.value);
-cachedStep = parseFloat(dbgStep.value);
-cachedSpreadR = parseInt(dbgSpread.value);
-cachedFwdD = parseFloat(dbgFwdD.value);
-cachedSideD = parseFloat(dbgSideD.value);
-cachedNormD = parseInt(dbgNormD.value);
-cachedNoise = parseFloat(dbgNoise.value);
-// Sync labels
-tineLabel.textContent = tineSlider.value;
-dbgDepthLabel.textContent = dbgDepth.value;
-dbgRimLabel.textContent = dbgRim.value;
-dbgLightLabel.textContent = dbgLight.value;
-dbgBlendLabel.textContent = dbgBlend.value;
-dbgStepLabel.textContent = dbgStep.value;
-dbgSpreadLabel.textContent = dbgSpread.value;
-dbgFwdDLabel.textContent = dbgFwdD.value;
-dbgSideDLabel.textContent = dbgSideD.value;
-dbgNormDLabel.textContent = dbgNormD.value;
-dbgNoiseLabel.textContent = dbgNoise.value;
+setupSliders();
+loadSettings();
 rebuildGaussKernel();
 clearSand();
 </script>
