@@ -253,8 +253,10 @@
     <circle id="symCenter" cx="50%" cy="50%" r="3" fill="#c2a67d" style="display:none; opacity: 0.6;" />
   </svg>
 </div>
-<div style="width: 100%; max-width: 1120px; margin-top: 16px; padding: 0 20px;">
-  <button id="clearBtn" style="width: 100%;">Clear Sand</button>
+<div style="width: 1120px; max-width: calc(100% - 40px); margin-top: 16px; display: flex; gap: 16px;">
+  <button id="clearBtn" style="flex: 0 0 calc(50% - 8px);">Clear Sand</button>
+  <button id="undoBtn" style="flex: 1;">Undo</button>
+  <button id="redoBtn" style="flex: 1;">Redo</button>
 </div>
 <div class="controls" style="margin-top: 16px;">
   <button id="settingsBtn" class="active">Tools</button>
@@ -439,6 +441,100 @@
 const canvas = document.getElementById('garden');
 const ctx = canvas.getContext('2d');
 const clearBtn = document.getElementById('clearBtn');
+const undoBtn = document.getElementById('undoBtn');
+const redoBtn = document.getElementById('redoBtn');
+
+// --- Undo/Redo System ---
+const MAX_UNDO = 10;
+const undoStack = [];
+const redoStack = [];
+
+function getCurrentState() {
+  return {
+    h: new Float32Array(sandHeight),
+    r: new Float32Array(sandR),
+    g: new Float32Array(sandG),
+    b: new Float32Array(sandB)
+  };
+}
+
+function saveState() {
+  // Clear redo stack on new action
+  redoStack.length = 0;
+  
+  if (undoStack.length >= MAX_UNDO) {
+    undoStack.shift(); // Remove oldest state
+  }
+  undoStack.push(getCurrentState());
+  updateHistoryBtns();
+}
+
+function undo() {
+  if (undoStack.length === 0) return;
+  
+  // Save current state to redo stack before undoing
+  redoStack.push(getCurrentState());
+  
+  const state = undoStack.pop();
+  sandHeight.set(state.h);
+  sandR.set(state.r);
+  sandG.set(state.g);
+  sandB.set(state.b);
+  
+  markFullDirty();
+  requestRender();
+  updateHistoryBtns();
+}
+
+function redo() {
+  if (redoStack.length === 0) return;
+
+  // Save current state to undo stack before redoing
+  if (undoStack.length >= MAX_UNDO) {
+    undoStack.shift();
+  }
+  undoStack.push(getCurrentState());
+
+  const state = redoStack.pop();
+  sandHeight.set(state.h);
+  sandR.set(state.r);
+  sandG.set(state.g);
+  sandB.set(state.b);
+
+  markFullDirty();
+  requestRender();
+  updateHistoryBtns();
+}
+
+function updateHistoryBtns() {
+  undoBtn.disabled = undoStack.length === 0;
+  undoBtn.style.opacity = undoStack.length === 0 ? '0.5' : '1';
+  
+  redoBtn.disabled = redoStack.length === 0;
+  redoBtn.style.opacity = redoStack.length === 0 ? '0.5' : '1';
+}
+
+undoBtn.addEventListener('click', undo);
+redoBtn.addEventListener('click', redo);
+updateHistoryBtns();
+
+// Keyboard shortcuts
+document.addEventListener('keydown', (e) => {
+  if (e.ctrlKey || e.metaKey) {
+    const key = e.key.toLowerCase();
+    if (key === 'z') {
+      e.preventDefault();
+      if (e.shiftKey) {
+        redo();
+      } else {
+        undo();
+      }
+    } else if (key === 'y') {
+      e.preventDefault();
+      redo();
+    }
+  }
+});
 
 // --- Cached slider values (optimization #3) ---
 const cached = {};
@@ -607,6 +703,7 @@ function generateNoiseMap() {
 }
 
 function clearSand() {
+  saveState(); // Save state before clearing
   initSand();
   // Add fine random variation for a natural untouched look
   for (let i = 0; i < totalPixels; i++) {
@@ -873,7 +970,7 @@ function getSymmetryPoints(x, y, dirX, dirY, perpX, perpY) {
     const len = pts.length;
     for (let i = 0; i < len; i++) {
       const p = pts[i];
-      pts.push({x: W - p.x, y: p.y, dirX: -p.dirX, dirY: p.dirY, perpX: -p.perpX, perpY: p.perpY});
+      pts.push({x: (W - 1) - p.x, y: p.y, dirX: -p.dirX, dirY: p.dirY, perpX: -p.perpX, perpY: p.perpY});
     }
   }
   if (mirrorH) {
@@ -1116,6 +1213,7 @@ function markCursorDirty() {
 // Mouse events
 canvas.addEventListener('mousedown', (e) => {
   if (e.target !== canvas) return;
+  saveState(); // Save state before stroke
   drawing = true;
   const [x, y] = getPos(e);
   lastX = x; lastY = y;
@@ -1165,6 +1263,7 @@ canvas.addEventListener('mouseenter', () => {
 canvas.addEventListener('touchstart', (e) => {
   if (e.target !== canvas) return;
   e.preventDefault();
+  saveState(); // Save state before stroke
   drawing = true;
   const [x, y] = getPos(e);
   lastX = x; lastY = y;
