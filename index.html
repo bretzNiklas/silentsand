@@ -197,6 +197,47 @@
   }
   .tab-content { display: none; }
   .tab-content.active { display: block; }
+
+  /* Mirror toggle buttons */
+  .mirror-controls {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .mirror-controls span {
+    color: #c2a67d;
+    font-size: 12px;
+    letter-spacing: 0.1em;
+    font-weight: 500;
+  }
+  .mirror-btn {
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: #2a2218;
+    border: 1px solid #5a4a35;
+    color: #5a4a35;
+    font-size: 16px;
+    line-height: 1;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.3s;
+    letter-spacing: 0;
+    text-transform: none;
+  }
+  .mirror-btn:hover { background: #3a3228; color: #c2a67d; }
+  .mirror-btn.active { background: #5a4a35; color: #c2a67d; }
+
+  /* Symmetry guide lines */
+  .sym-line {
+    stroke: #c2a67d;
+    stroke-width: 1.5;
+    opacity: 0.45;
+    stroke-dasharray: 8,5;
+  }
 </style>
 </head>
 <body>
@@ -204,6 +245,12 @@
 <div style="position: relative; display: inline-block; overflow: hidden; border-radius: 6px;">
   <canvas id="garden"></canvas>
   <img id="guideOverlay" src="" alt="" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; opacity: 0; object-fit: contain;">
+  <svg id="symmetryLines" style="position:absolute; top:0; left:0; width:100%; height:100%; pointer-events:none; display:none;">
+    <line id="symV" class="sym-line" x1="50%" y1="0" x2="50%" y2="100%" style="display:none;" />
+    <line id="symH" class="sym-line" x1="0" y1="50%" x2="100%" y2="50%" style="display:none;" />
+    <line id="symD1" class="sym-line" x1="0" y1="0" x2="100%" y2="100%" style="display:none;" />
+    <line id="symD2" class="sym-line" x1="100%" y1="0" x2="0" y2="100%" style="display:none;" />
+  </svg>
 </div>
 <div style="width: 100%; max-width: 1120px; margin-top: 16px; padding: 0 20px;">
   <button id="clearBtn" style="width: 100%;">Clear Sand</button>
@@ -233,6 +280,12 @@
       <div class="size-controls">
         <span>Size</span>
         <input type="range" id="sizeSlider" min="4" max="20" value="6">
+      </div>
+      <div class="mirror-controls">
+        <span>Mirror</span>
+        <button id="mirrorVBtn" class="mirror-btn" title="Vertical axis">&#124;</button>
+        <button id="mirrorHBtn" class="mirror-btn" title="Horizontal axis">&mdash;</button>
+        <button id="mirrorDBtn" class="mirror-btn" title="Diagonal axes">&times;</button>
       </div>
     </div>
     <div style="margin-top: 12px; text-align: center;">
@@ -572,6 +625,11 @@ function getRakeTineOffsets(tineRadius) {
   return offsets;
 }
 
+// --- Mirror symmetry state ---
+let mirrorV = false;  // vertical axis (left/right)
+let mirrorH = false;  // horizontal axis (top/bottom)
+let mirrorD = false;  // diagonal axes (8-way)
+
 // --- Drawing state ---
 let drawing = false;
 let lastX = -1, lastY = -1;
@@ -786,9 +844,76 @@ function carveTine(x, y, radius, dirX, dirY) {
   }
 }
 
-function carveRake(x, y, tineRadius, dirX, dirY) {
-  const offsets = getRakeTineOffsets(tineRadius);
+function getSymmetryPoints(x, y, dirX, dirY, perpX, perpY) {
+  let pts = [{x, y, dirX, dirY, perpX, perpY}];
+  if (mirrorV) {
+    const len = pts.length;
+    for (let i = 0; i < len; i++) {
+      const p = pts[i];
+      pts.push({x: W - p.x, y: p.y, dirX: -p.dirX, dirY: p.dirY, perpX: -p.perpX, perpY: p.perpY});
+    }
+  }
+  if (mirrorH) {
+    const len = pts.length;
+    for (let i = 0; i < len; i++) {
+      const p = pts[i];
+      pts.push({x: p.x, y: H - p.y, dirX: p.dirX, dirY: -p.dirY, perpX: p.perpX, perpY: -p.perpY});
+    }
+  }
+  if (mirrorD) {
+    const hw = W / 2, hh = H / 2;
+    const ar = W / H, iar = H / W;
+    const len = pts.length;
+    for (let i = 0; i < len; i++) {
+      const p = pts[i];
+      // Normalize to [-1,1], swap, denormalize
+      const nx = (p.x - hw) / hw;
+      const ny = (p.y - hh) / hh;
+      const sx = ny * hw + hw;
+      const sy = nx * hh + hh;
+      // Transform direction
+      let sdx = p.dirY * ar;
+      let sdy = p.dirX * iar;
+      const dlen = Math.sqrt(sdx * sdx + sdy * sdy);
+      if (dlen > 0.0001) { sdx /= dlen; sdy /= dlen; const olen = Math.sqrt(p.dirX * p.dirX + p.dirY * p.dirY); sdx *= olen; sdy *= olen; }
+      // Transform perpendicular
+      let spx = p.perpY * ar;
+      let spy = p.perpX * iar;
+      const plen = Math.sqrt(spx * spx + spy * spy);
+      if (plen > 0.0001) { spx /= plen; spy /= plen; const olen = Math.sqrt(p.perpX * p.perpX + p.perpY * p.perpY); spx *= olen; spy *= olen; }
+      pts.push({x: sx, y: sy, dirX: sdx, dirY: sdy, perpX: spx, perpY: spy});
+    }
+  }
+  // Deduplicate points within 1px
+  const deduped = [pts[0]];
+  for (let i = 1; i < pts.length; i++) {
+    let dup = false;
+    for (let j = 0; j < deduped.length; j++) {
+      const dx = pts[i].x - deduped[j].x;
+      const dy = pts[i].y - deduped[j].y;
+      if (dx * dx + dy * dy < 1) { dup = true; break; }
+    }
+    if (!dup) deduped.push(pts[i]);
+  }
+  return deduped;
+}
+
+function carveRakeSymmetric(x, y, tineRadius, dirX, dirY) {
+  if (!mirrorV && !mirrorH && !mirrorD) {
+    carveRake(x, y, tineRadius, dirX, dirY);
+    return;
+  }
   const [perpX, perpY] = getRakePerp();
+  const points = getSymmetryPoints(x, y, dirX, dirY, perpX, perpY);
+  for (const p of points) {
+    carveRake(p.x, p.y, tineRadius, p.dirX, p.dirY, p.perpX, p.perpY);
+  }
+}
+
+function carveRake(x, y, tineRadius, dirX, dirY, overridePerpX, overridePerpY) {
+  const offsets = getRakeTineOffsets(tineRadius);
+  const perpX = overridePerpX !== undefined ? overridePerpX : getRakePerp()[0];
+  const perpY = overridePerpY !== undefined ? overridePerpY : getRakePerp()[1];
 
   for (const offset of offsets) {
     const tx = x + perpX * offset;
@@ -864,35 +989,46 @@ function render() {
 
   resetDirty();
 
-  // Draw cursor
+  // Draw cursor(s)
   if (onCanvas) {
     ctx.save();
     const tineRadius = cached.tineRadius;
     const offsets = getRakeTineOffsets(tineRadius);
     const [perpX, perpY] = getRakePerp();
 
-    ctx.strokeStyle = 'rgba(80, 60, 40, 0.35)';
-    ctx.fillStyle = 'rgba(80, 60, 40, 0.2)';
-    ctx.lineWidth = 1;
-
-    for (const offset of offsets) {
-      const tx = mouseX + perpX * offset;
-      const ty = mouseY + perpY * offset;
-      ctx.beginPath();
-      ctx.arc(tx, ty, tineRadius, 0, Math.PI * 2);
-      ctx.stroke();
-      ctx.fill();
+    function drawCursorAt(cx, cy, px, py, strokeAlpha, fillAlpha) {
+      ctx.strokeStyle = `rgba(80, 60, 40, ${strokeAlpha})`;
+      ctx.fillStyle = `rgba(80, 60, 40, ${fillAlpha})`;
+      ctx.lineWidth = 1;
+      for (const offset of offsets) {
+        const tx = cx + px * offset;
+        const ty = cy + py * offset;
+        ctx.beginPath();
+        ctx.arc(tx, ty, tineRadius, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.fill();
+      }
+      if (offsets.length > 1) {
+        ctx.strokeStyle = `rgba(80, 60, 40, ${strokeAlpha * 0.7})`;
+        ctx.lineWidth = 2;
+        const first = offsets[0];
+        const last = offsets[offsets.length - 1];
+        ctx.beginPath();
+        ctx.moveTo(cx + px * first, cy + py * first);
+        ctx.lineTo(cx + px * last, cy + py * last);
+        ctx.stroke();
+      }
     }
 
-    if (offsets.length > 1) {
-      ctx.strokeStyle = 'rgba(80, 60, 40, 0.25)';
-      ctx.lineWidth = 2;
-      const first = offsets[0];
-      const last = offsets[offsets.length - 1];
-      ctx.beginPath();
-      ctx.moveTo(mouseX + perpX * first, mouseY + perpY * first);
-      ctx.lineTo(mouseX + perpX * last, mouseY + perpY * last);
-      ctx.stroke();
+    // Primary cursor
+    drawCursorAt(mouseX, mouseY, perpX, perpY, 0.35, 0.2);
+
+    // Mirror ghost cursors
+    if (mirrorV || mirrorH || mirrorD) {
+      const pts = getSymmetryPoints(mouseX, mouseY, 0, 0, perpX, perpY);
+      for (let i = 1; i < pts.length; i++) {
+        drawCursorAt(pts[i].x, pts[i].y, pts[i].perpX, pts[i].perpY, 0.15, 0.08);
+      }
     }
     ctx.restore();
   }
@@ -921,7 +1057,7 @@ function strokeTo(x, y) {
     const t = i / steps;
     const cx = lastX + dx * t;
     const cy = lastY + dy * t;
-    carveRake(cx, cy, tineRadius, strokeDX, strokeDY);
+    carveRakeSymmetric(cx, cy, tineRadius, strokeDX, strokeDY);
   }
   carveTimeAccum += performance.now() - carveStart;
 
@@ -935,8 +1071,20 @@ function markCursorDirty() {
   const tineRadius = cached.tineRadius;
   const offsets = getRakeTineOffsets(tineRadius);
   const [px, py] = getRakePerp();
-  for (const offset of offsets) {
-    markDirty(mouseX + px * offset, mouseY + py * offset, tineRadius + 2);
+
+  function markCursorAt(cx, cy, cpx, cpy) {
+    for (const offset of offsets) {
+      markDirty(cx + cpx * offset, cy + cpy * offset, tineRadius + 2);
+    }
+  }
+
+  markCursorAt(mouseX, mouseY, px, py);
+
+  if (mirrorV || mirrorH || mirrorD) {
+    const pts = getSymmetryPoints(mouseX, mouseY, 0, 0, px, py);
+    for (let i = 1; i < pts.length; i++) {
+      markCursorAt(pts[i].x, pts[i].y, pts[i].perpX, pts[i].perpY);
+    }
   }
 }
 
@@ -948,7 +1096,7 @@ canvas.addEventListener('mousedown', (e) => {
   lastX = x; lastY = y;
   strokeDX = 0; strokeDY = 0;
   const carveStart = performance.now();
-  carveRake(x, y, cached.tineRadius, 0, 0);
+  carveRakeSymmetric(x, y, cached.tineRadius, 0, 0);
   carveTimeAccum += performance.now() - carveStart;
   requestRender();
 });
@@ -999,7 +1147,7 @@ canvas.addEventListener('touchstart', (e) => {
   onCanvas = true;
   strokeDX = 0; strokeDY = 0;
   const carveStart = performance.now();
-  carveRake(x, y, cached.tineRadius, 0, 0);
+  carveRakeSymmetric(x, y, cached.tineRadius, 0, 0);
   carveTimeAccum += performance.now() - carveStart;
   requestRender();
 });
@@ -1093,6 +1241,52 @@ tabBtns.forEach(btn => {
   });
 });
 
+// --- Mirror toggles ---
+const mirrorVBtn = document.getElementById('mirrorVBtn');
+const mirrorHBtn = document.getElementById('mirrorHBtn');
+const mirrorDBtn = document.getElementById('mirrorDBtn');
+const symmetryLines = document.getElementById('symmetryLines');
+const symV = document.getElementById('symV');
+const symH = document.getElementById('symH');
+const symD1 = document.getElementById('symD1');
+const symD2 = document.getElementById('symD2');
+
+function updateSymmetryLines() {
+  const any = mirrorV || mirrorH || mirrorD;
+  symmetryLines.style.display = any ? '' : 'none';
+  symV.style.display = mirrorV ? '' : 'none';
+  symH.style.display = mirrorH ? '' : 'none';
+  symD1.style.display = mirrorD ? '' : 'none';
+  symD2.style.display = mirrorD ? '' : 'none';
+}
+
+mirrorVBtn.addEventListener('click', () => {
+  mirrorV = !mirrorV;
+  mirrorVBtn.classList.toggle('active', mirrorV);
+  updateSymmetryLines();
+  markCursorDirty();
+  requestRender();
+  saveSettings();
+});
+
+mirrorHBtn.addEventListener('click', () => {
+  mirrorH = !mirrorH;
+  mirrorHBtn.classList.toggle('active', mirrorH);
+  updateSymmetryLines();
+  markCursorDirty();
+  requestRender();
+  saveSettings();
+});
+
+mirrorDBtn.addEventListener('click', () => {
+  mirrorD = !mirrorD;
+  mirrorDBtn.classList.toggle('active', mirrorD);
+  updateSymmetryLines();
+  markCursorDirty();
+  requestRender();
+  saveSettings();
+});
+
 // --- Settings Persistence ---
 function saveSettings() {
   const settings = {};
@@ -1104,6 +1298,9 @@ function saveSettings() {
   settings.guideZoom = guideZoom.value;
   settings.guideX = guideX.value;
   settings.guideY = guideY.value;
+  settings.mirrorV = mirrorV;
+  settings.mirrorH = mirrorH;
+  settings.mirrorD = mirrorD;
   localStorage.setItem('zenGardenSettings', JSON.stringify(settings));
 }
 
@@ -1128,6 +1325,10 @@ function loadSettings() {
     guideOverlay.style.display = guideToggle.checked ? 'block' : 'none';
     guideOverlay.style.opacity = guideOpacity.value / 100;
     updateGuideTransform();
+    if (s.mirrorV !== undefined) { mirrorV = s.mirrorV; mirrorVBtn.classList.toggle('active', mirrorV); }
+    if (s.mirrorH !== undefined) { mirrorH = s.mirrorH; mirrorHBtn.classList.toggle('active', mirrorH); }
+    if (s.mirrorD !== undefined) { mirrorD = s.mirrorD; mirrorDBtn.classList.toggle('active', mirrorD); }
+    updateSymmetryLines();
   } catch (e) {
     console.warn('Failed to load settings', e);
   }
