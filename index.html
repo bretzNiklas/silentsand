@@ -250,6 +250,7 @@
     <line id="symH" class="sym-line" x1="0" y1="50%" x2="100%" y2="50%" style="display:none;" />
     <line id="symD1" class="sym-line" x1="0" y1="0" x2="100%" y2="100%" style="display:none;" />
     <line id="symD2" class="sym-line" x1="100%" y1="0" x2="0" y2="100%" style="display:none;" />
+    <circle id="symCenter" cx="50%" cy="50%" r="3" fill="#c2a67d" style="display:none; opacity: 0.6;" />
   </svg>
 </div>
 <div style="width: 100%; max-width: 1120px; margin-top: 16px; padding: 0 20px;">
@@ -286,6 +287,13 @@
         <button id="mirrorVBtn" class="mirror-btn" title="Vertical axis">&#124;</button>
         <button id="mirrorHBtn" class="mirror-btn" title="Horizontal axis">&mdash;</button>
         <button id="mirrorDBtn" class="mirror-btn" title="Diagonal axes">&times;</button>
+      </div>
+      <div class="size-controls" style="margin-left: 8px; border-left: 1px solid #5a4a3544; padding-left: 8px;">
+        <span>Center Align</span>
+        <label class="toggle-switch">
+          <input type="checkbox" id="alignCenterToggle">
+          <span class="toggle-slider"></span>
+        </label>
       </div>
     </div>
     <div style="margin-top: 12px; text-align: center;">
@@ -629,6 +637,21 @@ function getRakeTineOffsets(tineRadius) {
 let mirrorV = false;  // vertical axis (left/right)
 let mirrorH = false;  // horizontal axis (top/bottom)
 let mirrorD = false;  // diagonal axes (8-way)
+let alignCenter = false; // center alignment
+
+// --- Helper for alignment ---
+function getPerpAt(x, y) {
+  if (alignCenter) {
+    const dx = x - W / 2;
+    const dy = y - H / 2;
+    const len = Math.sqrt(dx * dx + dy * dy);
+    if (len > 0.001) {
+      return [dx / len, dy / len];
+    }
+    return [1, 0];
+  }
+  return getRakePerp();
+}
 
 // --- Drawing state ---
 let drawing = false;
@@ -900,10 +923,12 @@ function getSymmetryPoints(x, y, dirX, dirY, perpX, perpY) {
 
 function carveRakeSymmetric(x, y, tineRadius, dirX, dirY) {
   if (!mirrorV && !mirrorH && !mirrorD) {
-    carveRake(x, y, tineRadius, dirX, dirY);
+    // Check alignment for non-symmetric case too
+    const [px, py] = getPerpAt(x, y);
+    carveRake(x, y, tineRadius, dirX, dirY, px, py);
     return;
   }
-  const [perpX, perpY] = getRakePerp();
+  const [perpX, perpY] = getPerpAt(x, y);
   const points = getSymmetryPoints(x, y, dirX, dirY, perpX, perpY);
   for (const p of points) {
     carveRake(p.x, p.y, tineRadius, p.dirX, p.dirY, p.perpX, p.perpY);
@@ -994,7 +1019,7 @@ function render() {
     ctx.save();
     const tineRadius = cached.tineRadius;
     const offsets = getRakeTineOffsets(tineRadius);
-    const [perpX, perpY] = getRakePerp();
+    const [perpX, perpY] = getPerpAt(mouseX, mouseY);
 
     function drawCursorAt(cx, cy, px, py, strokeAlpha, fillAlpha) {
       ctx.strokeStyle = `rgba(80, 60, 40, ${strokeAlpha})`;
@@ -1070,7 +1095,7 @@ function markCursorDirty() {
   if (!onCanvas) return;
   const tineRadius = cached.tineRadius;
   const offsets = getRakeTineOffsets(tineRadius);
-  const [px, py] = getRakePerp();
+  const [px, py] = getPerpAt(mouseX, mouseY);
 
   function markCursorAt(cx, cy, cpx, cpy) {
     for (const offset of offsets) {
@@ -1250,14 +1275,16 @@ const symV = document.getElementById('symV');
 const symH = document.getElementById('symH');
 const symD1 = document.getElementById('symD1');
 const symD2 = document.getElementById('symD2');
+const symCenter = document.getElementById('symCenter');
 
 function updateSymmetryLines() {
-  const any = mirrorV || mirrorH || mirrorD;
+  const any = mirrorV || mirrorH || mirrorD || alignCenter;
   symmetryLines.style.display = any ? '' : 'none';
   symV.style.display = mirrorV ? '' : 'none';
   symH.style.display = mirrorH ? '' : 'none';
   symD1.style.display = mirrorD ? '' : 'none';
   symD2.style.display = mirrorD ? '' : 'none';
+  symCenter.style.display = (any) ? '' : 'none';
 }
 
 mirrorVBtn.addEventListener('click', () => {
@@ -1287,6 +1314,15 @@ mirrorDBtn.addEventListener('click', () => {
   saveSettings();
 });
 
+const alignCenterToggle = document.getElementById('alignCenterToggle');
+alignCenterToggle.addEventListener('change', () => {
+  alignCenter = alignCenterToggle.checked;
+  updateSymmetryLines();
+  markCursorDirty();
+  requestRender();
+  saveSettings();
+});
+
 // --- Settings Persistence ---
 function saveSettings() {
   const settings = {};
@@ -1301,6 +1337,7 @@ function saveSettings() {
   settings.mirrorV = mirrorV;
   settings.mirrorH = mirrorH;
   settings.mirrorD = mirrorD;
+  settings.alignCenter = alignCenter;
   localStorage.setItem('zenGardenSettings', JSON.stringify(settings));
 }
 
@@ -1328,6 +1365,7 @@ function loadSettings() {
     if (s.mirrorV !== undefined) { mirrorV = s.mirrorV; mirrorVBtn.classList.toggle('active', mirrorV); }
     if (s.mirrorH !== undefined) { mirrorH = s.mirrorH; mirrorHBtn.classList.toggle('active', mirrorH); }
     if (s.mirrorD !== undefined) { mirrorD = s.mirrorD; mirrorDBtn.classList.toggle('active', mirrorD); }
+    if (s.alignCenter !== undefined) { alignCenter = s.alignCenter; alignCenterToggle.checked = alignCenter; }
     updateSymmetryLines();
   } catch (e) {
     console.warn('Failed to load settings', e);
