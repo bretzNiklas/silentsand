@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Zen Garden Online (silentsand.me) — a physics-based sand garden simulator using HTML5 Canvas. Zero dependencies, no build system, no framework. The entire application lives in a single `index.html` file deployed to GitHub Pages.
+Zen Garden Online (silentsand.me) — a physics-based sand garden simulator using HTML5 Canvas. Zero dependencies, no build system, no framework. Deployed to GitHub Pages.
 
 ## Development
 
@@ -12,9 +12,11 @@ No build step. Open `index.html` in a browser to run. Deploy by pushing to the G
 
 ## Architecture
 
-### Single-file structure
+### File structure
 
-Everything (HTML, CSS, JS) is in `index.html` (~1270 lines). This is intentional — the app has no external dependencies and ships as a single static file.
+- `index.html` (~255 lines) — HTML markup, meta/SEO tags, structured data
+- `script.js` (~1208 lines) — all JavaScript logic
+- `style.css` (~245 lines) — all CSS styling
 
 ### Data model
 
@@ -28,10 +30,23 @@ Canvas dimensions are set once at load: `W = min(1120, viewportWidth - 40)`, `H 
 ### Physics pipeline
 
 1. **`strokeTo()`** — interpolates mouse movement into discrete steps
-2. **`carveRake()`** — positions multiple tines along the rake perpendicular
+2. **`carveRake()`** — positions multiple tines along the rake perpendicular; handles symmetry by reflecting strokes across active mirror axes
 3. **`carveTine()`** — core carving function per tine:
    - Pass 1: Applies height profile from pre-computed LUT (`tineProfile`), blends with existing height, collects displaced sand
    - Pass 2: Distributes displaced sand to three deposit points (70% forward, 15% each side) using a pre-computed gaussian kernel
+
+### Mirror / symmetry system
+
+Three independent mirror modes can be combined:
+- **V (vertical)** — left/right axis reflection
+- **H (horizontal)** — top/bottom axis reflection
+- **D (diagonal)** — both diagonal axes, enabling up to 8-way kaleidoscope symmetry
+
+A **Center Align** toggle makes rake tines align radially from canvas center instead of following rake angle. Visual guide lines (SVG overlay) show active axes and center dot. Duplicate strokes within 1px are deduplicated.
+
+### Undo / redo system
+
+Captures full typed-array snapshots (sandHeight, sandR, sandG, sandB) on each mousedown/touchstart. Max stack depth: 10 states. Keyboard shortcuts: `Ctrl+Z` undo, `Ctrl+Shift+Z` / `Ctrl+Y` redo.
 
 ### Rendering
 
@@ -49,11 +64,23 @@ These are numbered in code comments as "optimization #1–#6":
 
 ### State persistence
 
-All user-configurable parameters (18 settings) are saved to `localStorage` under key `zenGardenSettings` on every input/change event and restored on load.
+- **Settings**: All user-configurable slider/toggle values saved to `localStorage` under key `zenGardenSettings` on every input/change event and restored on load.
+- **Garden saves**: Full sand state (height + color arrays, canvas dimensions) stored in IndexedDB. Users can quick-save with a custom name, load, or delete saves from the Saves tab.
 
 ### UI structure
 
-Three-tab settings panel (Rake, Image Guide, Tuning) with range sliders. Tuning sliders use `dbg*` ID prefix. The `info-i` class provides hover tooltips on tuning parameters.
+Four-tab settings panel:
+1. **Rake** — tine count, gap, size sliders; mirror buttons (V, H, D); center align toggle
+2. **Image** — guide image upload, show/hide toggle, opacity/zoom/position sliders
+3. **Tuning** — depth, rim, light, blend, and advanced physics sliders (`dbg*` IDs); `info-i` hover tooltips
+4. **Saves** — quick-save input, scrollable list of saves with load/delete actions
+
+### Keyboard shortcuts
+
+- `Ctrl+Z` / `Cmd+Z` — undo
+- `Ctrl+Shift+Z` / `Cmd+Shift+Z` — redo
+- `Ctrl+Y` / `Cmd+Y` — redo (Windows alternative)
+- Mouse wheel — rotate rake angle (8 snap positions at 45° increments)
 
 ## Conventions
 

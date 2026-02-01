@@ -331,6 +331,9 @@ let mouseX = -1, mouseY = -1;
 let onCanvas = false;
 // Track stroke direction for displacement
 let strokeDX = 0, strokeDY = 0;
+// Anchor point for axis-lock (Ctrl held)
+let anchorX = -1, anchorY = -1;
+let lockedAxis = null; // 'x' or 'y' once determined
 
 function getRakePerp() {
   return [Math.cos(rakeAngle), Math.sin(rakeAngle)];
@@ -783,6 +786,16 @@ function markCursorDirty() {
   }
 }
 
+// Constrain point to horizontal or vertical axis from anchor
+function axisLock(x, y) {
+  if (!lockedAxis) {
+    const adx = Math.abs(x - anchorX), ady = Math.abs(y - anchorY);
+    if (adx < 3 && ady < 3) return [anchorX, anchorY]; // not enough movement yet
+    lockedAxis = adx >= ady ? 'x' : 'y';
+  }
+  return lockedAxis === 'x' ? [x, anchorY] : [anchorX, y];
+}
+
 // Mouse events
 canvas.addEventListener('mousedown', (e) => {
   if (e.target !== canvas) return;
@@ -790,6 +803,8 @@ canvas.addEventListener('mousedown', (e) => {
   drawing = true;
   const [x, y] = getPos(e);
   lastX = x; lastY = y;
+  anchorX = x; anchorY = y;
+  lockedAxis = null;
   strokeDX = 0; strokeDY = 0;
   const carveStart = performance.now();
   carveRakeSymmetric(x, y, cached.tineRadius, 0, 0);
@@ -798,7 +813,8 @@ canvas.addEventListener('mousedown', (e) => {
 });
 
 canvas.addEventListener('mousemove', (e) => {
-  const [x, y] = getPos(e);
+  let [x, y] = getPos(e);
+  if (e.ctrlKey && drawing) [x, y] = axisLock(x, y);
   // Mark old cursor position dirty so it gets repainted clean
   markCursorDirty();
   mouseX = x; mouseY = y;
@@ -840,6 +856,8 @@ canvas.addEventListener('touchstart', (e) => {
   drawing = true;
   const [x, y] = getPos(e);
   lastX = x; lastY = y;
+  anchorX = x; anchorY = y;
+  lockedAxis = null;
   mouseX = x; mouseY = y;
   onCanvas = true;
   strokeDX = 0; strokeDY = 0;
