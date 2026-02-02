@@ -962,6 +962,11 @@ const guideZoom = document.getElementById('guideZoom');
 const guideX = document.getElementById('guideX');
 const guideY = document.getElementById('guideY');
 
+const guideBW = document.getElementById('guideBW');
+const guideThreshold = document.getElementById('guideThreshold');
+const guideThresholdGroup = document.getElementById('guideThresholdGroup');
+let guideOriginalSrc = ''; // stores the original (unprocessed) data URL
+
 guideBtn.addEventListener('click', () => guideUpload.click());
 
 guideUpload.addEventListener('change', (e) => {
@@ -969,7 +974,12 @@ guideUpload.addEventListener('change', (e) => {
   if (!file) return;
   const reader = new FileReader();
   reader.onload = (evt) => {
-    guideOverlay.src = evt.target.result;
+    guideOriginalSrc = evt.target.result;
+    if (guideBW.checked) {
+      applyGuideBW();
+    } else {
+      guideOverlay.src = guideOriginalSrc;
+    }
     // If opacity is 0 (default), set it to 50% so the user sees the image immediately
     if (guideOpacity.value === '0') {
       guideOpacity.value = 50;
@@ -977,6 +987,46 @@ guideUpload.addEventListener('change', (e) => {
     }
   };
   reader.readAsDataURL(file);
+});
+
+function applyGuideBW() {
+  if (!guideOriginalSrc) return;
+  const img = new Image();
+  img.onload = () => {
+    const c = document.createElement('canvas');
+    c.width = img.naturalWidth;
+    c.height = img.naturalHeight;
+    const cx = c.getContext('2d');
+    cx.drawImage(img, 0, 0);
+    const id = cx.getImageData(0, 0, c.width, c.height);
+    const d = id.data;
+    const thresh = parseInt(guideThreshold.value);
+    for (let i = 0; i < d.length; i += 4) {
+      const gray = d[i] * 0.299 + d[i + 1] * 0.587 + d[i + 2] * 0.114;
+      const v = gray >= thresh ? 255 : 0;
+      d[i] = v;
+      d[i + 1] = v;
+      d[i + 2] = v;
+    }
+    cx.putImageData(id, 0, 0);
+    guideOverlay.src = c.toDataURL();
+  };
+  img.src = guideOriginalSrc;
+}
+
+guideBW.addEventListener('change', () => {
+  guideThresholdGroup.style.display = guideBW.checked ? 'flex' : 'none';
+  if (guideBW.checked) {
+    applyGuideBW();
+  } else if (guideOriginalSrc) {
+    guideOverlay.src = guideOriginalSrc;
+  }
+  saveSettings();
+});
+
+guideThreshold.addEventListener('input', () => {
+  if (guideBW.checked) applyGuideBW();
+  saveSettings();
 });
 
 guideOpacity.addEventListener('input', () => {
@@ -1079,6 +1129,8 @@ function saveSettings() {
   settings.guideZoom = guideZoom.value;
   settings.guideX = guideX.value;
   settings.guideY = guideY.value;
+  settings.guideBW = guideBW.checked;
+  settings.guideThreshold = guideThreshold.value;
   settings.mirrorV = mirrorV;
   settings.mirrorH = mirrorH;
   settings.mirrorD = mirrorD;
@@ -1106,6 +1158,8 @@ function loadSettings() {
     if (s.guideZoom !== undefined) guideZoom.value = s.guideZoom;
     if (s.guideX !== undefined) guideX.value = s.guideX;
     if (s.guideY !== undefined) guideY.value = s.guideY;
+    if (s.guideBW !== undefined) { guideBW.checked = s.guideBW; guideThresholdGroup.style.display = s.guideBW ? 'flex' : 'none'; }
+    if (s.guideThreshold !== undefined) guideThreshold.value = s.guideThreshold;
     guideOverlay.style.display = guideToggle.checked ? 'block' : 'none';
     guideOverlay.style.opacity = guideOpacity.value / 100;
     updateGuideTransform();
