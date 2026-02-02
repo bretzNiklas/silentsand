@@ -947,9 +947,10 @@ clearBtn.addEventListener('click', clearSand);
 const settingsBtn = document.getElementById('settingsBtn');
 const settingsPanel = document.getElementById('settingsPanel');
 settingsBtn.addEventListener('click', () => {
-  const open = settingsPanel.style.display !== 'none';
-  settingsPanel.style.display = open ? 'none' : '';
+  const open = !settingsPanel.classList.contains('collapsed');
+  settingsPanel.classList.toggle('collapsed', open);
   settingsBtn.classList.toggle('active', !open);
+  settingsBtn.textContent = open ? '\u25B2' : '\u25BC';
 });
 
 // --- Guide Image Overlay ---
