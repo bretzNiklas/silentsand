@@ -873,6 +873,7 @@ canvas.addEventListener('wheel', (e) => {
   const dir = e.deltaY > 0 ? -1 : 1;
   const wheelSliderKey = heldKeys.has('t') ? 'tineCount' : heldKeys.has('g') ? 'gapMul' : heldKeys.has('s') ? 'tineRadius' : null;
   if (wheelSliderKey) {
+    markCursorDirty(); // mark old cursor area before cached values change
     const { el, labelEl } = sliderEls[wheelSliderKey];
     const step = parseFloat(el.step) || 1;
     const newVal = Math.min(parseFloat(el.max), Math.max(parseFloat(el.min), parseFloat(el.value) + dir * step));
