@@ -83,7 +83,9 @@ redoBtn.addEventListener('click', redo);
 updateHistoryBtns();
 
 // Keyboard shortcuts
+const heldKeys = new Set();
 document.addEventListener('keydown', (e) => {
+  heldKeys.add(e.key.toLowerCase());
   if (e.ctrlKey || e.metaKey) {
     const key = e.key.toLowerCase();
     if (key === 'z') {
@@ -98,7 +100,20 @@ document.addEventListener('keydown', (e) => {
       redo();
     }
   }
+  if (e.key.toLowerCase() === 'i' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+    const guideOverlay = document.getElementById('guideOverlay');
+    if (guideOverlay && guideOverlay.src) {
+      const guideToggle = document.getElementById('guideToggle');
+      guideToggle.checked = !guideToggle.checked;
+      guideToggle.dispatchEvent(new Event('change'));
+      saveSettings();
+    }
+  }
 });
+document.addEventListener('keyup', (e) => {
+  heldKeys.delete(e.key.toLowerCase());
+});
+window.addEventListener('blur', () => heldKeys.clear());
 
 // --- Cached slider values (optimization #3) ---
 const cached = {};
@@ -855,10 +870,21 @@ canvas.addEventListener('mousemove', (e) => {
 
 canvas.addEventListener('wheel', (e) => {
   e.preventDefault();
-  markCursorDirty();
-  const step = Math.PI / 8; // 22.5 degrees
-  rakeAngle += (e.deltaY > 0 ? -1 : 1) * step;
-  rakeAngle = Math.round(rakeAngle / step) * step;
+  const dir = e.deltaY > 0 ? -1 : 1;
+  const wheelSliderKey = heldKeys.has('t') ? 'tineCount' : heldKeys.has('g') ? 'gapMul' : heldKeys.has('s') ? 'tineRadius' : null;
+  if (wheelSliderKey) {
+    const { el, labelEl } = sliderEls[wheelSliderKey];
+    const step = parseFloat(el.step) || 1;
+    const newVal = Math.min(parseFloat(el.max), Math.max(parseFloat(el.min), parseFloat(el.value) + dir * step));
+    el.value = newVal;
+    el.dispatchEvent(new Event('input'));
+    saveSettings();
+  } else {
+    markCursorDirty();
+    const step = Math.PI / 8; // 22.5 degrees
+    rakeAngle += dir * step;
+    rakeAngle = Math.round(rakeAngle / step) * step;
+  }
   markCursorDirty();
   requestRender();
 }, { passive: false });
