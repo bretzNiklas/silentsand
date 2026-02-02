@@ -338,6 +338,9 @@ let tlStartTime = 0;
 let tlIdleTimer = null;
 let tlStatusInterval = null;
 let tlBlobSize = 0;
+let tlCanvas = null;   // offscreen canvas (garden + watermark bar)
+let tlCtx = null;
+let tlBarH = 0;
 const TL_IDLE_DELAY = 2000;
 const TL_FPS = 30;
 const TL_MAX_BYTES = 500 * 1024 * 1024; // 500MB
@@ -853,7 +856,7 @@ canvas.addEventListener('mousemove', (e) => {
 canvas.addEventListener('wheel', (e) => {
   e.preventDefault();
   markCursorDirty();
-  const step = Math.PI / 4; // 45 degrees
+  const step = Math.PI / 8; // 22.5 degrees
   rakeAngle += (e.deltaY > 0 ? -1 : 1) * step;
   rakeAngle = Math.round(rakeAngle / step) * step;
   markCursorDirty();
@@ -1250,25 +1253,27 @@ const tlStatusEl = document.getElementById('tlStatus');
 const tlDot = document.getElementById('tlDot');
 
 function tlDrawWatermark() {
-  if (!tlRecording) return;
-  const barH = Math.max(24, Math.round(H * 0.045));
-  ctx.save();
-  // Dark bar
-  ctx.fillStyle = 'rgba(26, 26, 26, 0.78)';
-  ctx.fillRect(0, 0, W, barH);
+  if (!tlRecording || !tlCtx) return;
+  const barH = tlBarH;
+  tlCtx.save();
+  // Dark bar at top
+  tlCtx.fillStyle = '#1a1a1a';
+  tlCtx.fillRect(0, 0, W, barH);
   // Subtle bottom edge
-  ctx.fillStyle = 'rgba(90, 74, 53, 0.25)';
-  ctx.fillRect(0, barH - 1, W, 1);
+  tlCtx.fillStyle = 'rgba(90, 74, 53, 0.25)';
+  tlCtx.fillRect(0, barH - 1, W, 1);
   // Text
-  const fontSize = Math.max(11, Math.round(barH * 0.46));
-  ctx.font = `300 ${fontSize}px "Segoe UI", system-ui, sans-serif`;
-  ctx.fillStyle = 'rgba(220, 195, 155, 0.95)';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.shadowColor = 'rgba(0, 0, 0, 0.4)';
-  ctx.shadowBlur = 3;
-  ctx.fillText('S I L E N T S A N D . M E', W / 2, barH / 2);
-  ctx.restore();
+  const fontSize = Math.max(14, Math.round(barH * 0.5));
+  tlCtx.font = `300 ${fontSize}px "Segoe UI", system-ui, sans-serif`;
+  tlCtx.fillStyle = 'rgba(220, 195, 155, 0.95)';
+  tlCtx.textAlign = 'center';
+  tlCtx.textBaseline = 'middle';
+  tlCtx.shadowColor = 'rgba(0, 0, 0, 0.4)';
+  tlCtx.shadowBlur = 3;
+  tlCtx.fillText('S I L E N T S A N D . M E', W / 2, barH / 2);
+  tlCtx.restore();
+  // Copy the main canvas below the watermark bar
+  tlCtx.drawImage(canvas, 0, barH);
 }
 
 function tlGetMimeType() {
@@ -1292,7 +1297,14 @@ function tlStart() {
   tlChunks = [];
   tlBlobSize = 0;
 
-  tlStream = canvas.captureStream(TL_FPS);
+  // Create offscreen canvas: garden + watermark bar below
+  tlBarH = Math.max(32, Math.round(H * 0.065));
+  tlCanvas = document.createElement('canvas');
+  tlCanvas.width = W;
+  tlCanvas.height = H + tlBarH;
+  tlCtx = tlCanvas.getContext('2d');
+
+  tlStream = tlCanvas.captureStream(TL_FPS);
   const mimeType = tlGetMimeType();
   const options = mimeType ? { mimeType } : {};
 
@@ -1352,6 +1364,10 @@ function tlStop() {
     tlStream.getTracks().forEach(t => t.stop());
     tlStream = null;
   }
+
+  tlCanvas = null;
+  tlCtx = null;
+  tlBarH = 0;
 
   tlRecordBtn.textContent = 'Record';
   tlRecordBtn.classList.remove('recording');
