@@ -65,13 +65,11 @@
     <circle id="symCenter" cx="50%" cy="50%" r="3" fill="#c2a67d" style="display:none; opacity: 0.6;" />
   </svg>
 </div>
-<div style="width: 1120px; max-width: calc(100% - 40px); margin-top: 16px; display: flex; gap: 16px;">
-  <button id="clearBtn" style="flex: 0 0 calc(50% - 8px);">Clear Sand</button>
+<div style="width: 1120px; max-width: calc(100% - 40px); margin-top: 16px; display: flex; gap: 16px; align-items: center;">
+  <button id="clearBtn" style="flex: 1;">Clear Sand</button>
   <button id="undoBtn" style="flex: 1;">Undo</button>
   <button id="redoBtn" style="flex: 1;">Redo</button>
-</div>
-<div class="controls" style="margin-top: 16px;">
-  <button id="settingsBtn" class="active">Tools & Saves</button>
+  <button id="settingsBtn" class="gear-btn active" title="Settings">&#9881;</button>
 </div>
 
 <div id="settingsPanel" style="margin-top: 16px; padding-top: 8px; border-top: 1px solid #5a4a3544;">
@@ -80,7 +78,6 @@
     <button class="tab-btn" data-tab="tab-guide">Image</button>
     <button class="tab-btn" data-tab="tab-tuning">Tuning</button>
     <button class="tab-btn" data-tab="tab-saves">Saves</button>
-    <button class="tab-btn" data-tab="tab-record">Record</button>
   </div>
 
   <div id="tab-rake" class="tab-content active">
@@ -111,11 +108,6 @@
           <span class="toggle-slider"></span>
         </label>
       </div>
-    </div>
-    <div style="margin-top: 12px; text-align: center;">
-      <span style="color: #c2a67d; font-size: 13px; font-weight: 500; opacity: 0.8; letter-spacing: 0.05em;">
-        Scroll wheel to rotate rake
-      </span>
     </div>
   </div>
 
@@ -163,7 +155,8 @@
   </div>
 
   <div id="tab-tuning" class="tab-content">
-    <div class="controls">
+    <div class="section-label">Carving</div>
+    <div class="controls" style="margin-top: 4px;">
       <div class="size-controls">
         <span>Depth</span>
         <input type="range" id="dbgDepth" min="0.05" max="0.60" step="0.01" value="0.38">
@@ -175,23 +168,19 @@
         <span class="tine-label" id="dbgRimLabel">0.12</span>
       </div>
       <div class="size-controls">
-        <span>Light</span>
-        <input type="range" id="dbgLight" min="0.10" max="0.80" step="0.01" value="0.40">
-        <span class="tine-label" id="dbgLightLabel">0.40</span>
-      </div>
-      <div class="size-controls">
         <span>Blend</span>
         <input type="range" id="dbgBlend" min="0.20" max="0.80" step="0.01" value="0.55">
         <span class="tine-label" id="dbgBlendLabel">0.55</span>
       </div>
-    </div>
-    <div class="controls" style="margin-top:8px;">
       <div class="size-controls">
         <span>Step</span>
         <input type="range" id="dbgStep" min="0.03" max="0.50" step="0.01" value="0.37">
         <span class="tine-label" id="dbgStepLabel">0.37</span>
         <span class="info-i">i<span class="info-tip">Stroke density. Higher = faster, coarser</span></span>
       </div>
+    </div>
+    <div class="section-label" style="margin-top: 10px;">Displacement</div>
+    <div class="controls" style="margin-top: 4px;">
       <div class="size-controls">
         <span>Spread</span>
         <input type="range" id="dbgSpread" min="1" max="4" step="1" value="1">
@@ -210,6 +199,14 @@
         <span class="tine-label" id="dbgSideDLabel">0.66</span>
         <span class="info-i">i<span class="info-tip">Side push distance. Higher = wider rim banks</span></span>
       </div>
+    </div>
+    <div class="section-label" style="margin-top: 10px;">Rendering</div>
+    <div class="controls" style="margin-top: 4px;">
+      <div class="size-controls">
+        <span>Light</span>
+        <input type="range" id="dbgLight" min="0.10" max="0.80" step="0.01" value="0.40">
+        <span class="tine-label" id="dbgLightLabel">0.40</span>
+      </div>
       <div class="size-controls">
         <span>NormD</span>
         <input type="range" id="dbgNormD" min="1" max="6" step="1" value="4">
@@ -226,31 +223,34 @@
   </div>
 
   <div id="tab-saves" class="tab-content">
-    <div class="controls" style="border-bottom: 1px solid #5a4a3522; padding-bottom: 12px; margin-bottom: 12px;">
-      <input type="text" id="saveNameInput" placeholder="Save name..." style="background: #2a2218; border: 1px solid #5a4a35; color: #c2a67d; padding: 6px 12px; border-radius: 4px; font-size: 13px; outline: none; flex: 1;">
-      <button id="quickSaveBtn">Quick Save</button>
-    </div>
-    <div id="saveList" style="max-height: 250px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding-right: 4px;">
-      <!-- Save items will be injected here -->
-      <div style="text-align: center; color: #5a4a35; font-size: 12px; padding: 20px;">No saved gardens yet</div>
-    </div>
-  </div>
-
-  <div id="tab-record" class="tab-content">
-    <div class="controls">
-      <span style="color: #c2a67d; font-size: 12px; letter-spacing: 0.1em; font-weight: 500;">Mode</span>
-      <select id="tlMode">
-        <option value="continuous">Continuous</option>
-        <option value="interaction">On Interaction</option>
-      </select>
-      <button id="tlRecordBtn">Record</button>
-      <span id="tlStatus"></span>
-      <span id="tlDot"></span>
+    <div style="display: flex; gap: 16px; align-items: flex-start;">
+      <div style="flex: 1; min-width: 0;">
+        <div class="controls" style="border-bottom: 1px solid #5a4a3522; padding-bottom: 12px; margin-bottom: 12px;">
+          <input type="text" id="saveNameInput" placeholder="Save name..." style="background: #2a2218; border: 1px solid #5a4a35; color: #c2a67d; padding: 6px 12px; border-radius: 4px; font-size: 13px; outline: none; flex: 1;">
+          <button id="quickSaveBtn">Quick Save</button>
+        </div>
+        <div id="saveList" style="max-height: 250px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding-right: 4px;">
+          <!-- Save items will be injected here -->
+          <div style="text-align: center; color: #5a4a35; font-size: 12px; padding: 20px;">No saved gardens yet</div>
+        </div>
+      </div>
+      <div style="border-left: 1px solid #5a4a3544; padding-left: 16px; display: flex; flex-direction: column; gap: 8px;">
+        <div class="section-label">Record</div>
+        <select id="tlMode" style="width: 100%;">
+          <option value="continuous">Continuous</option>
+          <option value="interaction">On Interaction</option>
+        </select>
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <button id="tlRecordBtn">Record</button>
+          <span id="tlStatus"></span>
+          <span id="tlDot"></span>
+        </div>
+      </div>
     </div>
   </div>
 </div>
 
-<div class="seo-content" style="max-width: 800px; margin: 40px auto; padding: 0 20px; color: #c2a67d; opacity: 0.9;">
+<div class="seo-content" style="max-width: 800px; margin: 80px auto 40px; padding: 0 20px; color: #c2a67d; opacity: 0.9;">
   <section style="margin-bottom: 40px; text-align: center;">
     <h2 style="font-weight: 300; letter-spacing: 0.1em; text-transform: uppercase; font-size: 18px; margin-bottom: 12px; border-bottom: 1px solid #5a4a3544; display: inline-block; padding-bottom: 4px;">About Silent Sand</h2>
     <p style="line-height: 1.6; font-size: 15px;">
