@@ -950,7 +950,13 @@ function render() {
 // --- Stroke handling ---
 function strokeTo(x, y) {
   const tineRadius = cached.tineRadius;
-  const stepFrac = cached.step;
+  let stepFrac = cached.step;
+  // Increase step linearly when rake is large with many tines (performance)
+  const sizeMid = 12; // midpoint of size range 4–20
+  if (tineRadius > sizeMid && cached.tineCount > 4) {
+    const t = (tineRadius - sizeMid) / (20 - sizeMid); // 0 at mid, 1 at max
+    stepFrac = cached.step + (0.55 - cached.step) * t;
+  }
   const dx = x - lastX;
   const dy = y - lastY;
   const dist = Math.sqrt(dx * dx + dy * dy);
@@ -1353,6 +1359,41 @@ function loadSettings() {
 // Add global listener to save on any input change in settings panel
 document.getElementById('settingsPanel').addEventListener('input', saveSettings);
 document.getElementById('settingsPanel').addEventListener('change', saveSettings); // for checkbox
+
+// Reset settings to defaults
+document.getElementById('resetSettingsBtn').addEventListener('click', () => {
+  localStorage.removeItem('zenGardenSettings');
+  // Reset sliders to their HTML default values
+  for (const def of SLIDER_CONFIG) {
+    const { el, labelEl } = sliderEls[def.key];
+    el.value = el.getAttribute('value');
+    cached[def.key] = def.parse(el.value);
+    if (labelEl) labelEl.textContent = el.value;
+    if (def.onChange) def.onChange();
+  }
+  // Reset mirror/alignment
+  mirrorV = false; mirrorH = false; mirrorD = false; alignCenter = false;
+  mirrorVBtn.classList.remove('active');
+  mirrorHBtn.classList.remove('active');
+  mirrorDBtn.classList.remove('active');
+  alignCenterToggle.checked = false;
+  updateSymmetryLines();
+  // Reset guide overlay
+  guideToggle.checked = false;
+  guideOverlay.style.display = 'none';
+  guideOpacity.value = 0;
+  guideOverlay.style.opacity = '0';
+  guideZoom.value = 100;
+  guideX.value = 0;
+  guideY.value = 0;
+  updateGuideTransform();
+  guideBW.checked = false;
+  guideThresholdGroup.style.display = 'none';
+  guideThreshold.value = 128;
+  markCursorDirty();
+  markFullDirty();
+  requestRender();
+});
 
 // --- IndexedDB Browser Storage ---
 const DB_NAME = 'ZenGardenDB';
