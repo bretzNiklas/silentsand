@@ -509,6 +509,37 @@ let tineProfileRim = -1;
 let tineProfile = null; // Float32Array, size (2*r+1)²
 let tineProfileStride = 0;
 
+// --- Digging Mode Helper ---
+function getDiggingColor(h, out) {
+  const dug = 2.0 - h;
+  const normDug = dug > 1.89 ? 1 : dug < 0 ? 0 : dug / 1.89;
+  let r, g, b;
+
+  if (normDug < 0.25) {
+    // Sand surface (cream)
+    r = 210; g = 190; b = 160;
+  } else if (normDug < 0.50) {
+    // Sand -> clay (vibrant rust)
+    const t = (normDug - 0.25) / 0.25;
+    r = 210 + t * (190 - 210);
+    g = 190 + t * (100 - 190);
+    b = 160 + t * (50 - 160);
+  } else if (normDug < 0.75) {
+    // Clay -> dark earth
+    const t = (normDug - 0.50) / 0.25;
+    r = 190 + t * (80 - 190);
+    g = 100 + t * (55 - 100);
+    b = 50 + t * (40 - 50);
+  } else {
+    // Dark earth -> bedrock/jade
+    const t = (normDug - 0.75) / 0.25;
+    r = 80 + t * (60 - 80);
+    g = 55 + t * (120 - 55);
+    b = 40 + t * (60 - 40);
+  }
+  out[0] = r; out[1] = g; out[2] = b;
+}
+
 function rebuildTineProfile(r) {
   const curDepth = cached.depth;
   const curRim = cached.rim;
@@ -590,9 +621,24 @@ function carveTine(x, y, radius, dirX, dirY) {
       if (diggingMode) {
         // Subtractive carving: each pass removes a fixed amount (no convergence)
         if (targetHeight >= 1.0) continue; // skip rim regions
-        const removeAmount = (1.0 - targetHeight) * blendTarget;
+        
+        // Progressive hardness: deeper layers are harder to dig
+        // 2.0 (surface) = 1.0 hardness
+        // 0.1 (bottom) = ~4.0 hardness
+        const depthFactor = (2.0 - currentH) / 1.9;
+        const hardness = 1.0 + depthFactor * 3.0;
+
+        const removeAmount = ((1.0 - targetHeight) * blendTarget) / hardness;
         newH = currentH - removeAmount;
         if (newH < 0.1) newH = 0.1;
+
+        // Update backing color arrays to match the new depth
+        // This ensures particles and subsequent renders reflect the exposed layer
+        const col = [0, 0, 0];
+        getDiggingColor(newH, col);
+        sandR[idx] = col[0];
+        sandG[idx] = col[1];
+        sandB[idx] = col[2];
       } else {
         newH = currentH * blendInv + targetHeight * blendTarget;
       }
@@ -943,30 +989,10 @@ function render() {
           const shade = lighting * heightBr;
           const noise = noiseMap[idx] * shade * noiseMul;
 
-          // Layer color based on total accumulated depth
-          let lR, lG, lB;
-          if (normDug < 0.25) {
-            // Sand surface (cream)
-            lR = 210; lG = 190; lB = 160;
-          } else if (normDug < 0.50) {
-            // Sand → clay (180, 115, 65)
-            const t = (normDug - 0.25) / 0.25;
-            lR = 210 + t * (180 - 210);
-            lG = 190 + t * (115 - 190);
-            lB = 160 + t * (65 - 160);
-          } else if (normDug < 0.75) {
-            // Clay → dark earth (85, 60, 40)
-            const t = (normDug - 0.50) / 0.25;
-            lR = 180 + t * (85 - 180);
-            lG = 115 + t * (60 - 115);
-            lB = 65 + t * (40 - 65);
-          } else {
-            // Dark earth → green (75, 145, 75)
-            const t = (normDug - 0.75) / 0.25;
-            lR = 85 + t * (75 - 85);
-            lG = 60 + t * (145 - 60);
-            lB = 40 + t * (75 - 40);
-          }
+          // Base color comes from sandR/G/B (updated during carve)
+          let lR = baseR; 
+          let lG = baseG; 
+          let lB = baseB;
 
           if (normDug > 0.85 && quotePixels && quotePixels[idx]) {
             // Quote reveal: blend toward warm accent #e8d5b7
