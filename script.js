@@ -843,7 +843,7 @@ function axisLock(x, y) {
 // Mouse events
 canvas.addEventListener('mousedown', (e) => {
   if (e.target !== canvas) return;
-  abortIntro();
+  if (introPlaying) { abortIntro(); return; }
   saveState(); // Save state before stroke
   drawing = true;
   tlResumeForInteraction();
@@ -859,6 +859,7 @@ canvas.addEventListener('mousedown', (e) => {
 });
 
 canvas.addEventListener('mousemove', (e) => {
+  if (introPlaying) return;
   let [x, y] = getPos(e);
   if (e.ctrlKey && drawing) [x, y] = axisLock(x, y);
   // Mark old cursor position dirty so it gets repainted clean
@@ -875,6 +876,7 @@ canvas.addEventListener('mousemove', (e) => {
 
 canvas.addEventListener('wheel', (e) => {
   e.preventDefault();
+  if (introPlaying) return;
   const dir = e.deltaY > 0 ? -1 : 1;
   const wheelSliderKey = heldKeys.has('t') ? 'tineCount' : heldKeys.has('g') ? 'gapMul' : heldKeys.has('s') ? 'tineRadius' : null;
   if (wheelSliderKey) {
@@ -903,14 +905,14 @@ canvas.addEventListener('mouseleave', () => {
   requestRender();
 });
 canvas.addEventListener('mouseenter', () => {
-  onCanvas = true;
+  if (!introPlaying) onCanvas = true;
 });
 
 // Touch events
 canvas.addEventListener('touchstart', (e) => {
   if (e.target !== canvas) return;
   e.preventDefault();
-  abortIntro();
+  if (introPlaying) { abortIntro(); return; }
   saveState(); // Save state before stroke
   drawing = true;
   tlResumeForInteraction();
@@ -1575,7 +1577,7 @@ function playIntroAnimation() {
   const p2x = W * 0.65,  p2y = H * 0.95;
   const p3x = W * 0.85,  p3y = H * 0.80;
 
-  const duration = 1800;
+  const duration = 1400;
   let startTs = null;
 
   introPlaying = true;
