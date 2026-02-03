@@ -14,14 +14,14 @@ No build step. Open `index.html` in a browser to run. Deploy by pushing to the G
 
 ### File structure
 
-- `index.html` (~255 lines) — HTML markup, meta/SEO tags, structured data
-- `script.js` (~1208 lines) — all JavaScript logic
-- `style.css` (~245 lines) — all CSS styling
+- `index.html` (~314 lines) — HTML markup, meta/SEO tags, structured data
+- `script.js` (~2168 lines) — all JavaScript logic
+- `style.css` (~311 lines) — all CSS styling
 
 ### Data model
 
 Per-pixel typed arrays store the sand simulation state:
-- `sandHeight[]` (Float32Array) — elevation at each pixel (range ~0.1–1.5)
+- `sandHeight[]` (Float32Array) — elevation at each pixel (range ~0.1–1.5 normal, 0.1–2.0 in digging mode)
 - `sandR/G/B[]` (Float32Array) — per-pixel color channels
 - `noiseMap[]` (Float32Array) — pre-generated grain texture
 
@@ -43,6 +43,26 @@ Three independent mirror modes can be combined:
 - **D (diagonal)** — both diagonal axes, enabling up to 8-way kaleidoscope symmetry
 
 A **Center Align** toggle makes rake tines align radially from canvas center instead of following rake angle. Visual guide lines (SVG overlay) show active axes and center dot. Duplicate strokes within 1px are deduplicated.
+
+### Digging mode
+
+A "Dig" button toggles digging mode, a subtractive carving experience where the user digs through geological layers to uncover a hidden daily Zen quote.
+
+**State**: `diggingMode` flag, `savedGardenState` (snapshot to restore on exit), `quotePixels` (Uint8Array bitmask of text pixels).
+
+**Setup** (`enterDiggingMode()`): Saves current garden state, fills sand to height 2.0, builds quote pixel mask by rendering the day's quote to an offscreen canvas, reads alpha channel into bitmask. Disables Clear and Quick Save buttons.
+
+**Carving behavior**: In `carveTine()`, digging mode uses subtractive carving — each pass removes a fixed amount instead of blending toward a target. Rim regions are skipped, displaced sand vanishes (no deposit pass). **Progressive hardness** scales with depth: surface has 1x hardness, deepest layers have 5x. Per-pixel colors are updated in real-time via `getDepthColor()`.
+
+**Geological layers** (`getDepthColor(h, surfaceH, out)`): Unified depth-based coloring used by both regular and digging modes. Six color keyframes map normalized depth (0–1) to layers:
+- 0.0 Sand (cream) → 0.2 Clay (rust) → 0.4 Loam (dark brown) → 0.6 Limestone (grey) → 0.8 Slate (teal) → 1.0 Obsidian (black)
+- Regular mode: `surfaceH = 1.0`, depth range 0.9. Digging mode: `surfaceH = 2.0`, depth range 1.9.
+
+**Quote reveal**: In `render()`, when depth exceeds 85% and the pixel is a quote pixel, the color blends toward `#e8d5b7` (warm accent).
+
+**Daily rotation**: `getDailyQuote()` picks from a 50-quote array using day-of-year modulo. `buildQuotePixels()` renders the quote with auto-sizing font and word-wrap onto an offscreen canvas, then extracts the alpha channel as a bitmask.
+
+**Exit** (`exitDiggingMode()`): Restores saved garden state, clears undo/redo stacks, re-enables buttons.
 
 ### Undo / redo system
 
@@ -87,4 +107,4 @@ Four-tab settings panel:
 - Global state uses `cached*` prefix for values mirrored from DOM sliders
 - Tuning/debug parameters use `dbg*` prefix for element IDs
 - Color palette: `#1a1a1a` (bg), `#c2a67d` (primary accent), `#5a4a35` (secondary), `#e8d5b7` (light accent)
-- Height values: 1.0 = flat sand, <1.0 = groove, >1.0 = rim/pile, clamped to [0.1, 1.5]
+- Height values: 1.0 = flat sand, <1.0 = groove, >1.0 = rim/pile, clamped to [0.1, 1.5]; digging mode uses 2.0 as surface and carves down to 0.1

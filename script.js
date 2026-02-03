@@ -4,6 +4,85 @@ const clearBtn = document.getElementById('clearBtn');
 const undoBtn = document.getElementById('undoBtn');
 const redoBtn = document.getElementById('redoBtn');
 
+// --- Digging Mode State ---
+let diggingMode = false;
+let savedGardenState = null;   // {h, r, g, b} snapshot
+let savedRakeSettings = null;  // slider values snapshot for restoring on dig exit
+let quotePixels = null;        // Uint8Array bitmask: 1 = text pixel
+let deepestHeight = 2.0;      // tracks minimum sandHeight during dig session
+// (dig mode uses subtractive carving — no accumulator needed)
+
+// Fixed rake settings for digging mode
+const DIG_RAKE_SETTINGS = {
+  tineRadius: 8,
+  tineCount: 6,
+  gapMul: 2.5,
+  depth: 0.10,
+  rim: 0.05,
+  blend: 0.55,
+  step: 0.30,
+  spread: 1,
+  fwdD: 0.59,
+  sideD: 0.66,
+};
+
+const ZEN_QUOTES = [
+  "The obstacle is the path.",
+  "Be still and know.",
+  "Let go or be dragged.",
+  "This too shall pass.",
+  "Be where you are.",
+  "Breathe in calm, breathe out tension.",
+  "Peace comes from within.",
+  "The present moment is all you have.",
+  "Silence is the language of the soul.",
+  "In stillness, find your strength.",
+  "Flow like water.",
+  "Nothing is permanent.",
+  "Simplicity is the ultimate sophistication.",
+  "The journey is the reward.",
+  "Be patient with yourself.",
+  "Every moment is a fresh beginning.",
+  "Less is more.",
+  "Find beauty in imperfection.",
+  "The mind is everything.",
+  "Seek peace within.",
+  "Do not dwell in the past.",
+  "What you think, you become.",
+  "The only way out is through.",
+  "Embrace the unknown.",
+  "Still water runs deep.",
+  "Where there is peace, there is growth.",
+  "One step at a time.",
+  "Your calm is your power.",
+  "The quieter you become, the more you hear.",
+  "Let it be.",
+  "Nature does not hurry, yet everything is accomplished.",
+  "Happiness is a direction, not a place.",
+  "To understand everything is to forgive everything.",
+  "The mind is its own place.",
+  "Fall seven times, stand up eight.",
+  "When you realize nothing is lacking, the world belongs to you.",
+  "Do not seek, do not search, do not ask, do not knock. It will find you.",
+  "Before enlightenment, chop wood, carry water.",
+  "Zen is not some kind of excitement, but concentration on our usual everyday routine.",
+  "When walking, walk. When eating, eat.",
+  "No snowflake ever falls in the wrong place.",
+  "The only Zen you find on mountaintops is the Zen you bring there.",
+  "Sitting quietly, doing nothing, spring comes, and the grass grows by itself.",
+  "To a mind that is still, the whole universe surrenders.",
+  "If you are depressed, you are living in the past. If you are anxious, you are living in the future.",
+  "The best time to plant a tree was twenty years ago. The second best time is now.",
+  "A flower does not think of competing with the flower next to it. It just blooms.",
+  "Mountains do not rise without earthquakes.",
+  "You cannot see your reflection in boiling water.",
+  "What the caterpillar calls the end, the rest of the world calls a butterfly.",
+];
+
+function getDailyQuote() {
+  return ZEN_QUOTES[Math.floor(Math.random() * ZEN_QUOTES.length)];
+}
+
 // --- Undo/Redo System ---
 const MAX_UNDO = 10;
 const undoStack = [];
@@ -147,7 +226,7 @@ function initGarden(width, height) {
 
 // --- Sand color presets ---
 const SAND_COLORS = [
-  [210, 190, 160], // cream (default)
+  [225, 210, 185], // light cream (default)
   [185, 110, 70],  // terracotta
   [100, 75, 55],   // dark brown
   [160, 160, 155]  // grey
@@ -311,6 +390,7 @@ function generateNoiseMap() {
 }
 
 function clearSand() {
+  if (diggingMode) return;
   saveState(); // Save state before clearing
   tlResumeForInteraction();
   initSand();
@@ -441,6 +521,61 @@ let tineProfileRim = -1;
 let tineProfile = null; // Float32Array, size (2*r+1)²
 let tineProfileStride = 0;
 
+// --- Depth-based Color Helper ---
+// Pre-allocated temp array for hot-loop color lookups
+const _depthCol = [0, 0, 0];
+
+function getDepthColor(h, surfaceH, out) {
+  const maxDepth = surfaceH - 0.1;
+  const dug = surfaceH - h;
+  // Clamp normalized depth 0..1
+  const t = Math.max(0, Math.min(1, dug / maxDepth));
+
+  // Geological Layer Keyframes:
+  // 0.0: Sand (Light Cream) [225, 210, 185]
+  // 0.2: Clay (Rust)        [185, 100,  60]
+  // 0.4: Loam (Dark Brown)  [ 80,  60,  50]
+  // 0.6: Limestone (Grey)   [170, 175, 180]
+  // 0.8: Slate (Deep Teal)  [ 50,  80, 100]
+  // 1.0: Obsidian (Black)   [ 35,  30,  40]
+
+  let r, g, b;
+
+  if (t < 0.2) {
+    // Sand -> Clay
+    const localT = t / 0.2;
+    r = 225 + localT * (185 - 225);
+    g = 210 + localT * (100 - 210);
+    b = 185 + localT * (60 - 185);
+  } else if (t < 0.4) {
+    // Clay -> Loam
+    const localT = (t - 0.2) / 0.2;
+    r = 185 + localT * (80 - 185);
+    g = 100 + localT * (60 - 100);
+    b = 60  + localT * (50 - 60);
+  } else if (t < 0.6) {
+    // Loam -> Limestone (Hard layer!)
+    const localT = (t - 0.4) / 0.2;
+    r = 80 + localT * (170 - 80);
+    g = 60 + localT * (175 - 60);
+    b = 50 + localT * (180 - 50);
+  } else if (t < 0.8) {
+    // Limestone -> Slate
+    const localT = (t - 0.6) / 0.2;
+    r = 170 + localT * (50 - 170);
+    g = 175 + localT * (80 - 175);
+    b = 180 + localT * (100 - 180);
+  } else {
+    // Slate -> Obsidian
+    const localT = (t - 0.8) / 0.2;
+    r = 50  + localT * (35 - 50);
+    g = 80  + localT * (30 - 80);
+    b = 100 + localT * (40 - 100);
+  }
+
+  out[0] = r; out[1] = g; out[2] = b;
+}
+
 function rebuildTineProfile(r) {
   const curDepth = cached.depth;
   const curRim = cached.rim;
@@ -518,16 +653,40 @@ function carveTine(x, y, radius, dirX, dirY) {
       const idx = rowBase + px;
       const currentH = sandHeight[idx];
 
-      const blended = currentH * blendInv + targetHeight * blendTarget;
-      if (currentH > blended) {
-        const displaced = currentH - blended;
+      let newH;
+      if (diggingMode) {
+        // Subtractive carving: each pass removes a fixed amount (no convergence)
+        if (targetHeight >= 1.0) continue; // skip rim regions
+        
+        // Progressive hardness: deeper layers are harder to dig
+        // 2.0 (surface) = 1.0 hardness
+        // 0.1 (bottom) = ~5.0 hardness
+        const depthFactor = (2.0 - currentH) / 1.9;
+        const hardness = 1.0 + depthFactor * 4.0;
+
+        const removeAmount = ((1.0 - targetHeight) * blendTarget) / hardness;
+        newH = currentH - removeAmount;
+        if (newH < 0.1) newH = 0.1;
+        if (newH < deepestHeight) deepestHeight = newH;
+
+        // Update backing color arrays to match the new depth
+        // This ensures particles and subsequent renders reflect the exposed layer
+        getDepthColor(newH, 2.0, _depthCol);
+        sandR[idx] = _depthCol[0];
+        sandG[idx] = _depthCol[1];
+        sandB[idx] = _depthCol[2];
+      } else {
+        newH = currentH * blendInv + targetHeight * blendTarget;
+      }
+      if (currentH > newH) {
+        const displaced = currentH - newH;
         dispIdx[dispCount] = idx;
         dispAmount[dispCount] = displaced;
         dispSrcR[dispCount] = sandR[idx];
         dispSrcG[dispCount] = sandG[idx];
         dispSrcB[dispCount] = sandB[idx];
         dispCount++;
-        sandHeight[idx] = blended;
+        sandHeight[idx] = newH;
       }
     }
   }
@@ -536,6 +695,8 @@ function carveTine(x, y, radius, dirX, dirY) {
   markDirty(ix, iy, r + 2);
 
   // Pass 2: distribute displaced sand using flat gaussian kernel arrays
+  // In dig mode, skip deposits — displaced sand vanishes (no rim buildup)
+  if (!diggingMode) {
   const fwdDist = r * cached.fwdD;
   const sideDist = r * cached.sideD;
   const spreadR = cached.spread;
@@ -617,6 +778,7 @@ function carveTine(x, y, radius, dirX, dirY) {
       markDirty(cx, cy, depositMarkR);
     }
   }
+  } // end if (!diggingMode)
 
   // Spawn sand particles from displaced pixels
   spawnParticles(ix, iy, ndx, ndy, dispCount);
@@ -811,6 +973,36 @@ let lastRenderTime = 0;
 let lastFrameTs = 0;
 let lastFps = 0;
 
+// --- Depth pill ---
+const depthPill = document.getElementById('depthPill');
+const depthMarker = document.getElementById('depthMarker');
+const depthBar = document.querySelector('.depth-pill-bar');
+const clearedBar = document.getElementById('clearedBar');
+const clearedFill = document.getElementById('clearedFill');
+const depthPillText = document.getElementById('depthPillText');
+let reachedBottom = false;
+function updateDepthPill() {
+  if (!reachedBottom) {
+    const raw = (2.0 - deepestHeight) / 1.99 * 100;
+    const pct = 4 + raw * 0.99;
+    depthMarker.style.top = pct + '%';
+    if (deepestHeight <= 0.1) {
+      reachedBottom = true;
+      depthBar.style.display = 'none';
+      clearedBar.style.display = '';
+      depthPillText.textContent = '0%';
+    }
+  } else {
+    let cleared = 0;
+    for (let i = 0; i < totalPixels; i++) {
+      if (sandHeight[i] < 1.95) cleared++;
+    }
+    const clearedPct = (cleared / totalPixels * 100);
+    clearedFill.style.height = clearedPct + '%';
+    depthPillText.textContent = Math.round(clearedPct) + '%';
+  }
+}
+
 // --- Render (optimization #2: dirty-region, #5: reused ImageData) ---
 function render() {
   const renderStart = performance.now();
@@ -852,15 +1044,47 @@ function render() {
           lighting = 1.0 + dot * lightMul;
         }
 
-        const heightBrightness = 0.82 + 0.18 * (h < 0 ? 0 : h > 2 ? 2 : h);
-        const shade = lighting * heightBrightness;
-        const noise = noiseMap[idx] * shade * noiseMul;
+        if (diggingMode) {
+          // Digging mode: color layers based on how deep height has been carved
+          // Sand starts at 2.0 and goes down to 0.1 (total depth 1.9)
+          const dug = 2.0 - h;
+          const normDug = dug > 1.89 ? 1 : dug < 0 ? 0 : dug / 1.89;
 
-        // Uint8ClampedArray auto-clamps to [0, 255] — no Math.max/min needed
-        d[pi]     = baseR * shade + noise;
-        d[pi + 1] = baseG * shade + noise;
-        d[pi + 2] = baseB * shade + noise;
-        d[pi + 3] = 255;
+          // Normal groove lighting from sandHeight (normalize h so surface 2.0 matches regular 1.0)
+          const hNorm = h * 0.5;
+          const heightBr = 0.82 + 0.18 * (hNorm < 0 ? 0 : hNorm > 1 ? 1 : hNorm);
+          const shade = lighting * heightBr;
+          const noise = noiseMap[idx] * shade * noiseMul;
+
+          // Base color comes from sandR/G/B (updated during carve)
+          let lR = baseR; 
+          let lG = baseG; 
+          let lB = baseB;
+
+          if (normDug > 0.85 && quotePixels && quotePixels[idx]) {
+            // Quote reveal: blend toward warm accent #e8d5b7
+            const qt = (normDug - 0.85) / 0.15;
+            const qInv = 1 - qt;
+            d[pi]     = lR * shade * qInv + 232 * qt + noise;
+            d[pi + 1] = lG * shade * qInv + 213 * qt + noise;
+            d[pi + 2] = lB * shade * qInv + 183 * qt + noise;
+          } else {
+            d[pi]     = lR * shade + noise;
+            d[pi + 1] = lG * shade + noise;
+            d[pi + 2] = lB * shade + noise;
+          }
+          d[pi + 3] = 255;
+        } else {
+          const heightBrightness = 0.82 + 0.18 * (h < 0 ? 0 : h > 2 ? 2 : h);
+          const shade = lighting * heightBrightness;
+          const noise = noiseMap[idx] * shade * noiseMul;
+
+          // Uint8ClampedArray auto-clamps to [0, 255] — no Math.max/min needed
+          d[pi]     = baseR * shade + noise;
+          d[pi + 1] = baseG * shade + noise;
+          d[pi + 2] = baseB * shade + noise;
+          d[pi + 3] = 255;
+        }
       }
     }
 
@@ -941,6 +1165,8 @@ function render() {
 
   // Draw watermark for timelapse recording
   tlDrawWatermark();
+
+  if (diggingMode) updateDepthPill();
 
   // Update performance readout
   const renderEnd = performance.now();
@@ -1141,13 +1367,187 @@ canvas.addEventListener('touchend', (e) => {
 
 clearBtn.addEventListener('click', clearSand);
 
+// --- Digging Mode ---
+function buildQuotePixels() {
+  const quote = getDailyQuote();
+  const offscreen = document.createElement('canvas');
+  offscreen.width = W;
+  offscreen.height = H;
+  const octx = offscreen.getContext('2d');
+
+  // Auto-size font: start large, shrink to fit with word-wrap
+  let fontSize = Math.floor(Math.min(W, H) * 0.12);
+  const minFontSize = 14;
+  const maxWidth = W * 0.75;
+  const lineHeight = 1.4;
+
+  function wrapText(text, maxW, fSize) {
+    octx.font = `600 ${fSize}px "Segoe UI", system-ui, sans-serif`;
+    const words = text.split(' ');
+    const lines = [];
+    let line = '';
+    for (const word of words) {
+      const test = line ? line + ' ' + word : word;
+      if (octx.measureText(test).width > maxW && line) {
+        lines.push(line);
+        line = word;
+      } else {
+        line = test;
+      }
+    }
+    if (line) lines.push(line);
+    return lines;
+  }
+
+  // Shrink font until text fits
+  let lines;
+  while (fontSize >= minFontSize) {
+    lines = wrapText(quote, maxWidth, fontSize);
+    const totalH = lines.length * fontSize * lineHeight;
+    if (totalH < H * 0.6) break;
+    fontSize -= 2;
+  }
+
+  // Render centered text
+  octx.clearRect(0, 0, W, H);
+  octx.font = `600 ${fontSize}px "Segoe UI", system-ui, sans-serif`;
+  octx.fillStyle = '#fff';
+  octx.textAlign = 'center';
+  octx.textBaseline = 'middle';
+  const totalHeight = lines.length * fontSize * lineHeight;
+  const startY = (H - totalHeight) / 2 + fontSize * lineHeight / 2;
+  for (let i = 0; i < lines.length; i++) {
+    octx.fillText(lines[i], W / 2, startY + i * fontSize * lineHeight);
+  }
+
+  // Read alpha channel into bitmask
+  const id = octx.getImageData(0, 0, W, H);
+  const d = id.data;
+  quotePixels = new Uint8Array(totalPixels);
+  for (let i = 0; i < totalPixels; i++) {
+    quotePixels[i] = d[i * 4 + 3] > 128 ? 1 : 0;
+  }
+}
+
+function applySliderValues(values) {
+  for (const key of Object.keys(values)) {
+    const entry = sliderEls[key];
+    if (!entry) continue;
+    const { el, labelEl } = entry;
+    el.value = values[key];
+    const def = SLIDER_CONFIG.find(c => c.key === key);
+    cached[key] = def.parse(el.value);
+    if (labelEl) labelEl.textContent = el.value;
+  }
+  tineProfileR = -1;
+  rebuildGaussKernel();
+  markCursorDirty();
+}
+
 const settingsBtn = document.getElementById('settingsBtn');
 const settingsPanel = document.getElementById('settingsPanel');
+
+function enterDiggingMode() {
+  savedGardenState = getCurrentState();
+  undoStack.length = 0;
+  redoStack.length = 0;
+  updateHistoryBtns();
+
+  // Save current rake settings and apply fixed dig settings
+  savedRakeSettings = {};
+  for (const key of Object.keys(DIG_RAKE_SETTINGS)) {
+    savedRakeSettings[key] = sliderEls[key].el.value;
+  }
+  applySliderValues(DIG_RAKE_SETTINGS);
+
+  // Disable rake/tuning sliders during dig mode
+  for (const key of Object.keys(DIG_RAKE_SETTINGS)) {
+    sliderEls[key].el.disabled = true;
+  }
+
+  // Hide button bar and settings panel
+  clearBtn.parentElement.style.display = 'none';
+  settingsPanel.style.display = 'none';
+
+  // Reset depth tracking and show pill
+  deepestHeight = 2.0;
+  reachedBottom = false;
+  depthBar.style.display = '';
+  clearedBar.style.display = 'none';
+  depthPillText.textContent = 'Depth';
+  depthPill.style.display = 'flex';
+  updateDepthPill();
+
+  buildQuotePixels();
+
+  // Fill sand to normal height
+  const def = SAND_COLORS[0];
+  for (let i = 0; i < totalPixels; i++) {
+    sandHeight[i] = 2.0;
+    sandR[i] = def[0];
+    sandG[i] = def[1];
+    sandB[i] = def[2];
+  }
+  generateNoiseMap();
+
+  diggingMode = true;
+
+  markFullDirty();
+  requestRender();
+}
+
+function exitDiggingMode() {
+  sandHeight.set(savedGardenState.h);
+  sandR.set(savedGardenState.r);
+  sandG.set(savedGardenState.g);
+  sandB.set(savedGardenState.b);
+  savedGardenState = null;
+  quotePixels = null;
+
+  diggingMode = false;
+  depthPill.style.display = 'none';
+  // Clear undo/redo from digging session
+  undoStack.length = 0;
+  redoStack.length = 0;
+  updateHistoryBtns();
+
+  // Restore rake settings and re-enable sliders
+  if (savedRakeSettings) {
+    applySliderValues(savedRakeSettings);
+    savedRakeSettings = null;
+  }
+  for (const key of Object.keys(DIG_RAKE_SETTINGS)) {
+    sliderEls[key].el.disabled = false;
+  }
+
+  // Show button bar and settings panel
+  clearBtn.parentElement.style.display = 'flex';
+  settingsPanel.style.display = '';
+
+  // Sync mode selector buttons
+  document.querySelectorAll('.mode-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.mode === 'zen');
+  });
+
+  markFullDirty();
+  requestRender();
+}
+
 settingsBtn.addEventListener('click', () => {
   const open = !settingsPanel.classList.contains('collapsed');
   settingsPanel.classList.toggle('collapsed', open);
   settingsBtn.classList.toggle('active', !open);
-  settingsBtn.textContent = open ? '\u25B2' : '\u25BC';
+  settingsBtn.textContent = open ? '\u25B2 Options' : '\u25BC Options';
+});
+
+// --- Mode Selector ---
+document.querySelector('.mode-selector').addEventListener('click', (e) => {
+  const btn = e.target.closest('.mode-btn');
+  if (!btn || btn.classList.contains('active') || introPlaying) return;
+  document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  if (btn.dataset.mode === 'core') enterDiggingMode();
+  else exitDiggingMode();
 });
 
 // --- Guide Image Overlay ---
@@ -1463,6 +1863,9 @@ async function loadFromBrowser(id) {
     request.onsuccess = () => {
       const data = request.result;
       if (!data) return reject("Save not found");
+
+      // Exit digging mode if active
+      if (diggingMode) exitDiggingMode();
 
       // Use existing initGarden logic
       initGarden(data.w, data.h);
