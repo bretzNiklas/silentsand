@@ -214,7 +214,7 @@ function initGarden(width, height) {
 
 // --- Sand color presets ---
 const SAND_COLORS = [
-  [210, 190, 160], // cream (default)
+  [225, 210, 185], // light cream (default)
   [185, 110, 70],  // terracotta
   [100, 75, 55],   // dark brown
   [160, 160, 155]  // grey
@@ -509,15 +509,18 @@ let tineProfileRim = -1;
 let tineProfile = null; // Float32Array, size (2*r+1)²
 let tineProfileStride = 0;
 
-// --- Digging Mode Helper ---
-function getDiggingColor(h, out) {
-  const dug = 2.0 - h;
-  const maxDepth = 1.9;
+// --- Depth-based Color Helper ---
+// Pre-allocated temp array for hot-loop color lookups
+const _depthCol = [0, 0, 0];
+
+function getDepthColor(h, surfaceH, out) {
+  const maxDepth = surfaceH - 0.1;
+  const dug = surfaceH - h;
   // Clamp normalized depth 0..1
   const t = Math.max(0, Math.min(1, dug / maxDepth));
 
   // Geological Layer Keyframes:
-  // 0.0: Sand (Cream)       [210, 190, 160]
+  // 0.0: Sand (Light Cream) [225, 210, 185]
   // 0.2: Clay (Rust)        [185, 100,  60]
   // 0.4: Loam (Dark Brown)  [ 80,  60,  50]
   // 0.6: Limestone (Grey)   [170, 175, 180]
@@ -529,9 +532,9 @@ function getDiggingColor(h, out) {
   if (t < 0.2) {
     // Sand -> Clay
     const localT = t / 0.2;
-    r = 210 + localT * (185 - 210);
-    g = 190 + localT * (100 - 190);
-    b = 160 + localT * (60 - 160);
+    r = 225 + localT * (185 - 225);
+    g = 210 + localT * (100 - 210);
+    b = 185 + localT * (60 - 185);
   } else if (t < 0.4) {
     // Clay -> Loam
     const localT = (t - 0.2) / 0.2;
@@ -655,11 +658,10 @@ function carveTine(x, y, radius, dirX, dirY) {
 
         // Update backing color arrays to match the new depth
         // This ensures particles and subsequent renders reflect the exposed layer
-        const col = [0, 0, 0];
-        getDiggingColor(newH, col);
-        sandR[idx] = col[0];
-        sandG[idx] = col[1];
-        sandB[idx] = col[2];
+        getDepthColor(newH, 2.0, _depthCol);
+        sandR[idx] = _depthCol[0];
+        sandG[idx] = _depthCol[1];
+        sandB[idx] = _depthCol[2];
       } else {
         newH = currentH * blendInv + targetHeight * blendTarget;
       }
@@ -1005,8 +1007,9 @@ function render() {
           const dug = 2.0 - h;
           const normDug = dug > 1.89 ? 1 : dug < 0 ? 0 : dug / 1.89;
 
-          // Normal groove lighting from sandHeight
-          const heightBr = 0.82 + 0.18 * (h < 0 ? 0 : h > 2 ? 2 : h);
+          // Normal groove lighting from sandHeight (normalize h so surface 2.0 matches regular 1.0)
+          const hNorm = h * 0.5;
+          const heightBr = 0.82 + 0.18 * (hNorm < 0 ? 0 : hNorm > 1 ? 1 : hNorm);
           const shade = lighting * heightBr;
           const noise = noiseMap[idx] * shade * noiseMul;
 
