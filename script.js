@@ -934,8 +934,9 @@ function render() {
 
         if (diggingMode) {
           // Digging mode: color layers based on how deep height has been carved
-          const dug = 1.0 - h;
-          const normDug = dug > 0.9 ? 1 : dug < 0 ? 0 : dug / 0.9;
+          // Sand starts at 2.0 and goes down to 0.1 (total depth 1.9)
+          const dug = 2.0 - h;
+          const normDug = dug > 1.89 ? 1 : dug < 0 ? 0 : dug / 1.89;
 
           // Normal groove lighting from sandHeight
           const heightBr = 0.82 + 0.18 * (h < 0 ? 0 : h > 2 ? 2 : h);
@@ -1344,7 +1345,7 @@ function enterDiggingMode() {
   // Fill sand to normal height
   const def = SAND_COLORS[0];
   for (let i = 0; i < totalPixels; i++) {
-    sandHeight[i] = 1.0;
+    sandHeight[i] = 2.0;
     sandR[i] = def[0];
     sandG[i] = def[1];
     sandB[i] = def[2];
