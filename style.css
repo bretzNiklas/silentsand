@@ -19,6 +19,33 @@
     margin-bottom: 16px;
     opacity: 0.7;
   }
+  /* Mode selector */
+  .mode-selector {
+    display: flex;
+    justify-content: center;
+    gap: 24px;
+    margin-bottom: 14px;
+  }
+  .mode-btn {
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: #5a4a35;
+    padding: 6px 4px;
+    font-size: 13px;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    cursor: pointer;
+    opacity: 0.6;
+    transition: all 0.3s;
+  }
+  .mode-btn:hover { opacity: 1; color: #c2a67d; }
+  .mode-btn.active {
+    opacity: 1;
+    color: #c2a67d;
+    border-bottom: 2px solid #c2a67d;
+  }
+
   canvas {
     display: block;
     cursor: none;

@@ -3,7 +3,6 @@ const ctx = canvas.getContext('2d');
 const clearBtn = document.getElementById('clearBtn');
 const undoBtn = document.getElementById('undoBtn');
 const redoBtn = document.getElementById('redoBtn');
-const digBtn = document.getElementById('digBtn');
 
 // --- Digging Mode State ---
 let diggingMode = false;
@@ -1414,6 +1413,9 @@ function applySliderValues(values) {
   markCursorDirty();
 }
 
+const settingsBtn = document.getElementById('settingsBtn');
+const settingsPanel = document.getElementById('settingsPanel');
+
 function enterDiggingMode() {
   savedGardenState = getCurrentState();
   undoStack.length = 0;
@@ -1427,14 +1429,14 @@ function enterDiggingMode() {
   }
   applySliderValues(DIG_RAKE_SETTINGS);
 
-  // Disable rake/tuning sliders and grey out tabs during dig mode
+  // Disable rake/tuning sliders during dig mode
   for (const key of Object.keys(DIG_RAKE_SETTINGS)) {
     sliderEls[key].el.disabled = true;
   }
-  document.getElementById('tab-rake').style.opacity = '0.4';
-  document.getElementById('tab-rake').style.pointerEvents = 'none';
-  document.getElementById('tab-tuning').style.opacity = '0.4';
-  document.getElementById('tab-tuning').style.pointerEvents = 'none';
+
+  // Hide button bar and settings panel
+  clearBtn.parentElement.style.display = 'none';
+  settingsPanel.style.display = 'none';
 
   buildQuotePixels();
 
@@ -1449,12 +1451,6 @@ function enterDiggingMode() {
   generateNoiseMap();
 
   diggingMode = true;
-  digBtn.textContent = 'Exit Dig';
-  digBtn.classList.add('active');
-  clearBtn.disabled = true;
-  clearBtn.style.opacity = '0.4';
-  quickSaveBtn.disabled = true;
-  quickSaveBtn.style.opacity = '0.4';
 
   markFullDirty();
   requestRender();
@@ -1482,34 +1478,35 @@ function exitDiggingMode() {
   for (const key of Object.keys(DIG_RAKE_SETTINGS)) {
     sliderEls[key].el.disabled = false;
   }
-  document.getElementById('tab-rake').style.opacity = '';
-  document.getElementById('tab-rake').style.pointerEvents = '';
-  document.getElementById('tab-tuning').style.opacity = '';
-  document.getElementById('tab-tuning').style.pointerEvents = '';
 
-  digBtn.textContent = 'Dig';
-  digBtn.classList.remove('active');
-  clearBtn.disabled = false;
-  clearBtn.style.opacity = '1';
-  quickSaveBtn.disabled = false;
-  quickSaveBtn.style.opacity = '1';
+  // Show button bar and settings panel
+  clearBtn.parentElement.style.display = 'flex';
+  settingsPanel.style.display = '';
+
+  // Sync mode selector buttons
+  document.querySelectorAll('.mode-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.mode === 'zen');
+  });
 
   markFullDirty();
   requestRender();
 }
 
-digBtn.addEventListener('click', () => {
-  if (introPlaying) return;
-  diggingMode ? exitDiggingMode() : enterDiggingMode();
-});
-
-const settingsBtn = document.getElementById('settingsBtn');
-const settingsPanel = document.getElementById('settingsPanel');
 settingsBtn.addEventListener('click', () => {
   const open = !settingsPanel.classList.contains('collapsed');
   settingsPanel.classList.toggle('collapsed', open);
   settingsBtn.classList.toggle('active', !open);
   settingsBtn.textContent = open ? '\u25B2' : '\u25BC';
+});
+
+// --- Mode Selector ---
+document.querySelector('.mode-selector').addEventListener('click', (e) => {
+  const btn = e.target.closest('.mode-btn');
+  if (!btn || btn.classList.contains('active') || introPlaying) return;
+  document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  if (btn.dataset.mode === 'core') enterDiggingMode();
+  else exitDiggingMode();
 });
 
 // --- Guide Image Overlay ---
