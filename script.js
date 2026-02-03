@@ -80,10 +80,7 @@ const ZEN_QUOTES = [
 ];
 
 function getDailyQuote() {
-  const now = new Date();
-  const start = new Date(now.getFullYear(), 0, 0);
-  const dayOfYear = Math.floor((now - start) / 86400000);
-  return ZEN_QUOTES[dayOfYear % ZEN_QUOTES.length];
+  return ZEN_QUOTES[Math.floor(Math.random() * ZEN_QUOTES.length)];
 }
 
 // --- Undo/Redo System ---
