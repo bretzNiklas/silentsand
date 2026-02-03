@@ -198,6 +198,21 @@ const dispSrcR = new Float32Array(MAX_DISP);
 const dispSrcG = new Float32Array(MAX_DISP);
 const dispSrcB = new Float32Array(MAX_DISP);
 
+// --- Particle system (visual sand scatter) ---
+const MAX_PARTICLES = 150;
+const partX = new Float32Array(MAX_PARTICLES);
+const partY = new Float32Array(MAX_PARTICLES);
+const partVX = new Float32Array(MAX_PARTICLES);
+const partVY = new Float32Array(MAX_PARTICLES);
+const partLife = new Float32Array(MAX_PARTICLES);
+const partMaxLife = new Float32Array(MAX_PARTICLES);
+const partR = new Float32Array(MAX_PARTICLES);
+const partG = new Float32Array(MAX_PARTICLES);
+const partB = new Float32Array(MAX_PARTICLES);
+let partCount = 0;
+let particleLoopRunning = false;
+let particleLastTs = 0;
+
 // --- Dirty region tracking (optimization #2) ---
 let dirtyMinX, dirtyMinY, dirtyMaxX, dirtyMaxY;
 let dirtyEmpty = true;
@@ -579,6 +594,111 @@ function carveTine(x, y, radius, dirX, dirY) {
       markDirty(cx, cy, depositMarkR);
     }
   }
+
+  // Spawn sand particles from displaced pixels
+  spawnParticles(ix, iy, ndx, ndy, dispCount);
+}
+
+// --- Particle functions ---
+function spawnParticles(x, y, dirX, dirY, dispCount) {
+  if (dispCount === 0) return;
+  // Sample a small fraction of displaced pixels
+  const sampleRate = 0.04;
+  const maxSpawn = 5;
+  const count = Math.min(maxSpawn, Math.ceil(dispCount * sampleRate));
+  const step = Math.max(1, Math.floor(dispCount / count));
+
+  for (let s = 0; s < count; s++) {
+    if (partCount >= MAX_PARTICLES) break;
+    const di = (s * step) % dispCount;
+    const idx = dispIdx[di];
+    const amt = dispAmount[di];
+    if (amt < 0.01) continue;
+
+    const px = idx % W;
+    const py = (idx - px) / W;
+
+    // Random angular jitter (-45 to +45 degrees from stroke direction)
+    const jitter = (Math.random() - 0.5) * Math.PI * 0.5;
+    const cosJ = Math.cos(jitter);
+    const sinJ = Math.sin(jitter);
+    const speed = (1.5 + Math.random() * 2) * Math.min(amt * 4, 1);
+    // If stroke direction is zero (mousedown), scatter radially
+    let baseX = dirX, baseY = dirY;
+    if (dirX === 0 && dirY === 0) {
+      const angle = Math.random() * Math.PI * 2;
+      baseX = Math.cos(angle);
+      baseY = Math.sin(angle);
+    }
+    const vx = (baseX * cosJ - baseY * sinJ) * speed;
+    const vy = (baseX * sinJ + baseY * cosJ) * speed;
+
+    const i = partCount;
+    partX[i] = px;
+    partY[i] = py;
+    partVX[i] = vx;
+    partVY[i] = vy;
+    const life = 200 + Math.random() * 200; // 200-400ms
+    partLife[i] = life;
+    partMaxLife[i] = life;
+    partR[i] = dispSrcR[di];
+    partG[i] = dispSrcG[di];
+    partB[i] = dispSrcB[di];
+    partCount++;
+  }
+
+  // Kick off animation loop if not already running
+  if (partCount > 0 && !particleLoopRunning) {
+    particleLoopRunning = true;
+    particleLastTs = performance.now();
+    requestAnimationFrame(particleTick);
+  }
+}
+
+function updateParticles(dt) {
+  const friction = Math.pow(0.92, dt / 16.67); // normalize friction to ~60fps
+  let i = 0;
+  while (i < partCount) {
+    partLife[i] -= dt;
+    if (partLife[i] <= 0) {
+      // Swap-remove: move last particle into this slot
+      partCount--;
+      if (i < partCount) {
+        partX[i] = partX[partCount];
+        partY[i] = partY[partCount];
+        partVX[i] = partVX[partCount];
+        partVY[i] = partVY[partCount];
+        partLife[i] = partLife[partCount];
+        partMaxLife[i] = partMaxLife[partCount];
+        partR[i] = partR[partCount];
+        partG[i] = partG[partCount];
+        partB[i] = partB[partCount];
+      }
+      continue; // re-check this index (now holds swapped particle)
+    }
+    // Mark old position dirty (erase previous frame's drawing)
+    markDirty(partX[i], partY[i], 4);
+    // Apply friction and advance
+    partVX[i] *= friction;
+    partVY[i] *= friction;
+    partX[i] += partVX[i] * (dt / 16.67);
+    partY[i] += partVY[i] * (dt / 16.67);
+    // Mark new position dirty
+    markDirty(partX[i], partY[i], 4);
+    i++;
+  }
+}
+
+function particleTick(ts) {
+  if (partCount === 0) {
+    particleLoopRunning = false;
+    return;
+  }
+  const dt = Math.min(ts - particleLastTs, 50); // cap to avoid spiral
+  particleLastTs = ts;
+  updateParticles(dt);
+  requestRender();
+  requestAnimationFrame(particleTick);
 }
 
 function getSymmetryPoints(x, y, dirX, dirY, perpX, perpY) {
@@ -726,7 +846,30 @@ function render() {
     ctx.putImageData(imageData, 0, 0, rMinX, rMinY, dw, dh);
   }
 
+  // Draw sand particles
+  if (partCount > 0) {
+    ctx.save();
+    for (let i = 0; i < partCount; i++) {
+      const alpha = partLife[i] / partMaxLife[i];
+      const size = 1.5 * (0.4 + 0.6 * alpha); // 0.6–1.5px
+      ctx.globalAlpha = alpha * 0.5;
+      // Slight brightness lift so particles read against sand
+      const bright = 1.12;
+      const r = Math.min(255, (partR[i] * bright) | 0);
+      const g = Math.min(255, (partG[i] * bright) | 0);
+      const b = Math.min(255, (partB[i] * bright) | 0);
+      ctx.fillStyle = `rgb(${r},${g},${b})`;
+      ctx.beginPath();
+      ctx.arc(partX[i], partY[i], size, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
   resetDirty();
+
+  // Mark cursor area dirty for NEXT frame so putImageData erases this overlay
+  markCursorDirty();
 
   // Draw cursor(s)
   if (onCanvas) {
