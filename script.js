@@ -198,6 +198,21 @@ const dispSrcR = new Float32Array(MAX_DISP);
 const dispSrcG = new Float32Array(MAX_DISP);
 const dispSrcB = new Float32Array(MAX_DISP);
 
+// --- Particle system (visual sand scatter) ---
+const MAX_PARTICLES = 150;
+const partX = new Float32Array(MAX_PARTICLES);
+const partY = new Float32Array(MAX_PARTICLES);
+const partVX = new Float32Array(MAX_PARTICLES);
+const partVY = new Float32Array(MAX_PARTICLES);
+const partLife = new Float32Array(MAX_PARTICLES);
+const partMaxLife = new Float32Array(MAX_PARTICLES);
+const partR = new Float32Array(MAX_PARTICLES);
+const partG = new Float32Array(MAX_PARTICLES);
+const partB = new Float32Array(MAX_PARTICLES);
+let partCount = 0;
+let particleLoopRunning = false;
+let particleLastTs = 0;
+
 // --- Dirty region tracking (optimization #2) ---
 let dirtyMinX, dirtyMinY, dirtyMaxX, dirtyMaxY;
 let dirtyEmpty = true;
@@ -254,6 +269,7 @@ const SLIDER_CONFIG = [
   { id: 'dbgSideD', key: 'sideD', parse: parseFloat, labelId: 'dbgSideDLabel' },
   { id: 'dbgNormD', key: 'normD', parse: parseInt, labelId: 'dbgNormDLabel', onChange() { markFullDirty(); requestRender(); } },
   { id: 'dbgNoise', key: 'noise', parse: parseFloat, labelId: 'dbgNoiseLabel', onChange() { markFullDirty(); requestRender(); } },
+  { id: 'dbgParticles', key: 'particles', parse: parseInt, labelId: 'dbgParticlesLabel' },
 ];
 
 const sliderEls = {};
@@ -314,13 +330,24 @@ function getTineCount() {
   return cached.tineCount;
 }
 
+let rtoCache = null;
+let rtoCacheCount = -1, rtoCacheGap = -1, rtoCacheRadius = -1;
+
 function getRakeTineOffsets(tineRadius) {
   const count = cached.tineCount;
-  const spacing = cached.gapMul * tineRadius;
-  const offsets = [];
-  for (let i = 0; i < count; i++) {
-    offsets.push((i - (count - 1) / 2) * spacing);
+  const gap = cached.gapMul;
+  if (rtoCache && count === rtoCacheCount && gap === rtoCacheGap && tineRadius === rtoCacheRadius) {
+    return rtoCache;
   }
+  rtoCacheCount = count;
+  rtoCacheGap = gap;
+  rtoCacheRadius = tineRadius;
+  const spacing = gap * tineRadius;
+  const offsets = new Array(count);
+  for (let i = 0; i < count; i++) {
+    offsets[i] = (i - (count - 1) / 2) * spacing;
+  }
+  rtoCache = offsets;
   return offsets;
 }
 
@@ -360,6 +387,10 @@ const TL_IDLE_DELAY = 2000;
 const TL_FPS = 30;
 const TL_MAX_BYTES = 500 * 1024 * 1024; // 500MB
 
+// --- Intro animation state ---
+let introPlaying = false;
+let introAnimId = null;
+
 // --- Drawing state ---
 let drawing = false;
 let lastX = -1, lastY = -1;
@@ -376,19 +407,30 @@ function getRakePerp() {
   return [Math.cos(rakeAngle), Math.sin(rakeAngle)];
 }
 
+// Cache canvas bounding rect to avoid layout reflow on every mouse event
+let canvasRect = null;
+let canvasScaleX = 1, canvasScaleY = 1;
+
+function updateCanvasRect() {
+  canvasRect = canvas.getBoundingClientRect();
+  canvasScaleX = W / canvasRect.width;
+  canvasScaleY = H / canvasRect.height;
+}
+
+window.addEventListener('resize', updateCanvasRect);
+new ResizeObserver(updateCanvasRect).observe(canvas);
+
 function getPos(e) {
-  const rect = canvas.getBoundingClientRect();
-  const scaleX = W / rect.width;
-  const scaleY = H / rect.height;
+  if (!canvasRect) updateCanvasRect();
   if (e.touches) {
     return [
-      (e.touches[0].clientX - rect.left) * scaleX,
-      (e.touches[0].clientY - rect.top) * scaleY
+      (e.touches[0].clientX - canvasRect.left) * canvasScaleX,
+      (e.touches[0].clientY - canvasRect.top) * canvasScaleY
     ];
   }
   return [
-    (e.clientX - rect.left) * scaleX,
-    (e.clientY - rect.top) * scaleY
+    (e.clientX - canvasRect.left) * canvasScaleX,
+    (e.clientY - canvasRect.top) * canvasScaleY
   ];
 }
 
@@ -575,6 +617,112 @@ function carveTine(x, y, radius, dirX, dirY) {
       markDirty(cx, cy, depositMarkR);
     }
   }
+
+  // Spawn sand particles from displaced pixels
+  spawnParticles(ix, iy, ndx, ndy, dispCount);
+}
+
+// --- Particle functions ---
+function spawnParticles(x, y, dirX, dirY, dispCount) {
+  const intensity = cached.particles;
+  if (dispCount === 0 || intensity === 0) return;
+  // Sample a fraction of displaced pixels, scaled by intensity slider
+  const sampleRate = 0.04 * (intensity / 50);
+  const maxSpawn = Math.max(1, Math.round(5 * (intensity / 50)));
+  const count = Math.min(maxSpawn, Math.ceil(dispCount * sampleRate));
+  const step = Math.max(1, Math.floor(dispCount / count));
+
+  for (let s = 0; s < count; s++) {
+    if (partCount >= MAX_PARTICLES) break;
+    const di = (s * step) % dispCount;
+    const idx = dispIdx[di];
+    const amt = dispAmount[di];
+    if (amt < 0.01) continue;
+
+    const px = idx % W;
+    const py = (idx - px) / W;
+
+    // Random angular jitter (-45 to +45 degrees from stroke direction)
+    const jitter = (Math.random() - 0.5) * Math.PI * 0.5;
+    const cosJ = Math.cos(jitter);
+    const sinJ = Math.sin(jitter);
+    const speed = (1.5 + Math.random() * 2) * Math.min(amt * 4, 1);
+    // If stroke direction is zero (mousedown), scatter radially
+    let baseX = dirX, baseY = dirY;
+    if (dirX === 0 && dirY === 0) {
+      const angle = Math.random() * Math.PI * 2;
+      baseX = Math.cos(angle);
+      baseY = Math.sin(angle);
+    }
+    const vx = (baseX * cosJ - baseY * sinJ) * speed;
+    const vy = (baseX * sinJ + baseY * cosJ) * speed;
+
+    const i = partCount;
+    partX[i] = px;
+    partY[i] = py;
+    partVX[i] = vx;
+    partVY[i] = vy;
+    const life = 200 + Math.random() * 200; // 200-400ms
+    partLife[i] = life;
+    partMaxLife[i] = life;
+    partR[i] = dispSrcR[di];
+    partG[i] = dispSrcG[di];
+    partB[i] = dispSrcB[di];
+    partCount++;
+  }
+
+  // Kick off animation loop if not already running
+  if (partCount > 0 && !particleLoopRunning) {
+    particleLoopRunning = true;
+    particleLastTs = performance.now();
+    requestAnimationFrame(particleTick);
+  }
+}
+
+function updateParticles(dt) {
+  const friction = Math.pow(0.92, dt / 16.67); // normalize friction to ~60fps
+  let i = 0;
+  while (i < partCount) {
+    partLife[i] -= dt;
+    if (partLife[i] <= 0) {
+      // Swap-remove: move last particle into this slot
+      partCount--;
+      if (i < partCount) {
+        partX[i] = partX[partCount];
+        partY[i] = partY[partCount];
+        partVX[i] = partVX[partCount];
+        partVY[i] = partVY[partCount];
+        partLife[i] = partLife[partCount];
+        partMaxLife[i] = partMaxLife[partCount];
+        partR[i] = partR[partCount];
+        partG[i] = partG[partCount];
+        partB[i] = partB[partCount];
+      }
+      continue; // re-check this index (now holds swapped particle)
+    }
+    // Mark old position dirty (erase previous frame's drawing)
+    markDirty(partX[i], partY[i], 4);
+    // Apply friction and advance
+    partVX[i] *= friction;
+    partVY[i] *= friction;
+    partX[i] += partVX[i] * (dt / 16.67);
+    partY[i] += partVY[i] * (dt / 16.67);
+    // Mark new position dirty
+    markDirty(partX[i], partY[i], 4);
+    i++;
+  }
+}
+
+function particleTick(ts) {
+  if (partCount === 0) {
+    particleLoopRunning = false;
+    return;
+  }
+  const dt = Math.min(ts - particleLastTs, 50); // cap to avoid spiral
+  particleLastTs = ts;
+  updateParticles(dt);
+  requestRender();
+  requestAnimationFrame(particleTick);
 }
 
 function getSymmetryPoints(x, y, dirX, dirY, perpX, perpY) {
@@ -722,7 +870,30 @@ function render() {
     ctx.putImageData(imageData, 0, 0, rMinX, rMinY, dw, dh);
   }
 
+  // Draw sand particles
+  if (partCount > 0) {
+    ctx.save();
+    for (let i = 0; i < partCount; i++) {
+      const alpha = partLife[i] / partMaxLife[i];
+      const size = 1.5 * (0.4 + 0.6 * alpha); // 0.6–1.5px
+      ctx.globalAlpha = alpha * 0.5;
+      // Slight brightness lift so particles read against sand
+      const bright = 1.12;
+      const r = Math.min(255, (partR[i] * bright) | 0);
+      const g = Math.min(255, (partG[i] * bright) | 0);
+      const b = Math.min(255, (partB[i] * bright) | 0);
+      ctx.fillStyle = `rgb(${r},${g},${b})`;
+      ctx.beginPath();
+      ctx.arc(partX[i], partY[i], size, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
   resetDirty();
+
+  // Mark cursor area dirty for NEXT frame so putImageData erases this overlay
+  markCursorDirty();
 
   // Draw cursor(s)
   if (onCanvas) {
@@ -779,7 +950,13 @@ function render() {
 // --- Stroke handling ---
 function strokeTo(x, y) {
   const tineRadius = cached.tineRadius;
-  const stepFrac = cached.step;
+  let stepFrac = cached.step;
+  // Increase step linearly when rake is large with many tines (performance)
+  const sizeMid = 12; // midpoint of size range 4–20
+  if (tineRadius > sizeMid && cached.tineCount > 4) {
+    const t = (tineRadius - sizeMid) / (20 - sizeMid); // 0 at mid, 1 at max
+    stepFrac = cached.step + (0.55 - cached.step) * t;
+  }
   const dx = x - lastX;
   const dy = y - lastY;
   const dist = Math.sqrt(dx * dx + dy * dy);
@@ -837,8 +1014,29 @@ function axisLock(x, y) {
 }
 
 // Mouse events
+function onDocMouseMove(e) {
+  let [x, y] = getPos(e);
+  if (e.ctrlKey) [x, y] = axisLock(x, y);
+  strokeTo(x, y);
+  // Update cursor if still on canvas
+  if (onCanvas) {
+    markCursorDirty();
+    mouseX = x; mouseY = y;
+    markCursorDirty();
+  }
+  requestRender();
+}
+
+function onDocMouseUp() {
+  drawing = false;
+  document.removeEventListener('mousemove', onDocMouseMove);
+  document.removeEventListener('mouseup', onDocMouseUp);
+  tlScheduleIdlePause();
+}
+
 canvas.addEventListener('mousedown', (e) => {
   if (e.target !== canvas) return;
+  if (introPlaying) { abortIntro(); return; }
   saveState(); // Save state before stroke
   drawing = true;
   tlResumeForInteraction();
@@ -851,25 +1049,25 @@ canvas.addEventListener('mousedown', (e) => {
   carveRakeSymmetric(x, y, cached.tineRadius, 0, 0);
   carveTimeAccum += performance.now() - carveStart;
   requestRender();
+  // Track mouse at document level so stroke continues outside canvas
+  document.addEventListener('mousemove', onDocMouseMove);
+  document.addEventListener('mouseup', onDocMouseUp);
 });
 
 canvas.addEventListener('mousemove', (e) => {
-  let [x, y] = getPos(e);
-  if (e.ctrlKey && drawing) [x, y] = axisLock(x, y);
-  // Mark old cursor position dirty so it gets repainted clean
+  if (introPlaying) return;
+  // Cursor tracking (drawing is handled by document-level listener)
   markCursorDirty();
+  const [x, y] = getPos(e);
   mouseX = x; mouseY = y;
   onCanvas = true;
-  if (drawing) {
-    strokeTo(x, y);
-  }
-  // Mark new cursor position dirty
   markCursorDirty();
   requestRender();
 });
 
 canvas.addEventListener('wheel', (e) => {
   e.preventDefault();
+  if (introPlaying) return;
   const dir = e.deltaY > 0 ? -1 : 1;
   const wheelSliderKey = heldKeys.has('t') ? 'tineCount' : heldKeys.has('g') ? 'gapMul' : heldKeys.has('s') ? 'tineRadius' : null;
   if (wheelSliderKey) {
@@ -890,21 +1088,20 @@ canvas.addEventListener('wheel', (e) => {
   requestRender();
 }, { passive: false });
 
-canvas.addEventListener('mouseup', () => { drawing = false; tlScheduleIdlePause(); });
 canvas.addEventListener('mouseleave', () => {
   markCursorDirty();
-  drawing = false;
   onCanvas = false;
   requestRender();
 });
 canvas.addEventListener('mouseenter', () => {
-  onCanvas = true;
+  if (!introPlaying) onCanvas = true;
 });
 
 // Touch events
 canvas.addEventListener('touchstart', (e) => {
   if (e.target !== canvas) return;
   e.preventDefault();
+  if (introPlaying) { abortIntro(); return; }
   saveState(); // Save state before stroke
   drawing = true;
   tlResumeForInteraction();
@@ -1178,6 +1375,41 @@ function loadSettings() {
 // Add global listener to save on any input change in settings panel
 document.getElementById('settingsPanel').addEventListener('input', saveSettings);
 document.getElementById('settingsPanel').addEventListener('change', saveSettings); // for checkbox
+
+// Reset settings to defaults
+document.getElementById('resetSettingsBtn').addEventListener('click', () => {
+  localStorage.removeItem('zenGardenSettings');
+  // Reset sliders to their HTML default values
+  for (const def of SLIDER_CONFIG) {
+    const { el, labelEl } = sliderEls[def.key];
+    el.value = el.getAttribute('value');
+    cached[def.key] = def.parse(el.value);
+    if (labelEl) labelEl.textContent = el.value;
+    if (def.onChange) def.onChange();
+  }
+  // Reset mirror/alignment
+  mirrorV = false; mirrorH = false; mirrorD = false; alignCenter = false;
+  mirrorVBtn.classList.remove('active');
+  mirrorHBtn.classList.remove('active');
+  mirrorDBtn.classList.remove('active');
+  alignCenterToggle.checked = false;
+  updateSymmetryLines();
+  // Reset guide overlay
+  guideToggle.checked = false;
+  guideOverlay.style.display = 'none';
+  guideOpacity.value = 0;
+  guideOverlay.style.opacity = '0';
+  guideZoom.value = 100;
+  guideX.value = 0;
+  guideY.value = 0;
+  updateGuideTransform();
+  guideBW.checked = false;
+  guideThresholdGroup.style.display = 'none';
+  guideThreshold.value = 128;
+  markCursorDirty();
+  markFullDirty();
+  requestRender();
+});
 
 // --- IndexedDB Browser Storage ---
 const DB_NAME = 'ZenGardenDB';
@@ -1553,6 +1785,74 @@ document.addEventListener('visibilitychange', () => {
   }
 });
 
+// --- Intro Animation ---
+function abortIntro() {
+  if (!introPlaying) return;
+  cancelAnimationFrame(introAnimId);
+  introPlaying = false;
+  introAnimId = null;
+  drawing = false;
+}
+
+function playIntroAnimation() {
+  // Cubic Bézier control points (relative to canvas size)
+  const p0x = W * 0.15,  p0y = H * 0.20;
+  const p1x = W * 0.35,  p1y = H * 0.05;
+  const p2x = W * 0.65,  p2y = H * 0.95;
+  const p3x = W * 0.85,  p3y = H * 0.80;
+
+  const duration = 1400;
+  let startTs = null;
+
+  introPlaying = true;
+  drawing = true;
+
+  function bezier(t) {
+    const u = 1 - t;
+    const uu = u * u;
+    const tt = t * t;
+    return [
+      uu * u * p0x + 3 * uu * t * p1x + 3 * u * tt * p2x + tt * t * p3x,
+      uu * u * p0y + 3 * uu * t * p1y + 3 * u * tt * p2y + tt * t * p3y
+    ];
+  }
+
+  // Ease-in-out (smoothstep)
+  function ease(t) {
+    return t * t * (3 - 2 * t);
+  }
+
+  function tick(ts) {
+    if (!introPlaying) return;
+
+    if (startTs === null) {
+      startTs = ts;
+      saveState();
+      const [sx, sy] = bezier(0);
+      lastX = sx; lastY = sy;
+      strokeDX = 0; strokeDY = 0;
+    }
+
+    const elapsed = ts - startTs;
+    const raw = Math.min(elapsed / duration, 1);
+    const t = ease(raw);
+    const [cx, cy] = bezier(t);
+
+    strokeTo(cx, cy);
+    requestRender();
+
+    if (raw < 1) {
+      introAnimId = requestAnimationFrame(tick);
+    } else {
+      introPlaying = false;
+      introAnimId = null;
+      drawing = false;
+    }
+  }
+
+  introAnimId = requestAnimationFrame(tick);
+}
+
 // --- Init ---
 setupSliders();
 loadSettings();
@@ -1562,3 +1862,4 @@ initGarden(
 );
 rebuildGaussKernel();
 clearSand();
+playIntroAnimation();
