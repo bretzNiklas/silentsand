@@ -1014,6 +1014,26 @@ function axisLock(x, y) {
 }
 
 // Mouse events
+function onDocMouseMove(e) {
+  let [x, y] = getPos(e);
+  if (e.ctrlKey) [x, y] = axisLock(x, y);
+  strokeTo(x, y);
+  // Update cursor if still on canvas
+  if (onCanvas) {
+    markCursorDirty();
+    mouseX = x; mouseY = y;
+    markCursorDirty();
+  }
+  requestRender();
+}
+
+function onDocMouseUp() {
+  drawing = false;
+  document.removeEventListener('mousemove', onDocMouseMove);
+  document.removeEventListener('mouseup', onDocMouseUp);
+  tlScheduleIdlePause();
+}
+
 canvas.addEventListener('mousedown', (e) => {
   if (e.target !== canvas) return;
   if (introPlaying) { abortIntro(); return; }
@@ -1029,20 +1049,18 @@ canvas.addEventListener('mousedown', (e) => {
   carveRakeSymmetric(x, y, cached.tineRadius, 0, 0);
   carveTimeAccum += performance.now() - carveStart;
   requestRender();
+  // Track mouse at document level so stroke continues outside canvas
+  document.addEventListener('mousemove', onDocMouseMove);
+  document.addEventListener('mouseup', onDocMouseUp);
 });
 
 canvas.addEventListener('mousemove', (e) => {
   if (introPlaying) return;
-  let [x, y] = getPos(e);
-  if (e.ctrlKey && drawing) [x, y] = axisLock(x, y);
-  // Mark old cursor position dirty so it gets repainted clean
+  // Cursor tracking (drawing is handled by document-level listener)
   markCursorDirty();
+  const [x, y] = getPos(e);
   mouseX = x; mouseY = y;
   onCanvas = true;
-  if (drawing) {
-    strokeTo(x, y);
-  }
-  // Mark new cursor position dirty
   markCursorDirty();
   requestRender();
 });
@@ -1070,10 +1088,8 @@ canvas.addEventListener('wheel', (e) => {
   requestRender();
 }, { passive: false });
 
-canvas.addEventListener('mouseup', () => { drawing = false; tlScheduleIdlePause(); });
 canvas.addEventListener('mouseleave', () => {
   markCursorDirty();
-  drawing = false;
   onCanvas = false;
   requestRender();
 });
