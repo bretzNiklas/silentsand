@@ -512,31 +512,52 @@ let tineProfileStride = 0;
 // --- Digging Mode Helper ---
 function getDiggingColor(h, out) {
   const dug = 2.0 - h;
-  const normDug = dug > 1.89 ? 1 : dug < 0 ? 0 : dug / 1.89;
+  const maxDepth = 1.9;
+  // Clamp normalized depth 0..1
+  const t = Math.max(0, Math.min(1, dug / maxDepth));
+
+  // Geological Layer Keyframes:
+  // 0.0: Sand (Cream)       [210, 190, 160]
+  // 0.2: Clay (Rust)        [185, 100,  60]
+  // 0.4: Loam (Dark Brown)  [ 80,  60,  50]
+  // 0.6: Limestone (Grey)   [170, 175, 180]
+  // 0.8: Slate (Deep Teal)  [ 50,  80, 100]
+  // 1.0: Obsidian (Black)   [ 35,  30,  40]
+
   let r, g, b;
 
-  if (normDug < 0.25) {
-    // Sand surface (cream)
-    r = 210; g = 190; b = 160;
-  } else if (normDug < 0.50) {
-    // Sand -> clay (vibrant rust)
-    const t = (normDug - 0.25) / 0.25;
-    r = 210 + t * (190 - 210);
-    g = 190 + t * (100 - 190);
-    b = 160 + t * (50 - 160);
-  } else if (normDug < 0.75) {
-    // Clay -> dark earth
-    const t = (normDug - 0.50) / 0.25;
-    r = 190 + t * (80 - 190);
-    g = 100 + t * (55 - 100);
-    b = 50 + t * (40 - 50);
+  if (t < 0.2) {
+    // Sand -> Clay
+    const localT = t / 0.2;
+    r = 210 + localT * (185 - 210);
+    g = 190 + localT * (100 - 190);
+    b = 160 + localT * (60 - 160);
+  } else if (t < 0.4) {
+    // Clay -> Loam
+    const localT = (t - 0.2) / 0.2;
+    r = 185 + localT * (80 - 185);
+    g = 100 + localT * (60 - 100);
+    b = 60  + localT * (50 - 60);
+  } else if (t < 0.6) {
+    // Loam -> Limestone (Hard layer!)
+    const localT = (t - 0.4) / 0.2;
+    r = 80 + localT * (170 - 80);
+    g = 60 + localT * (175 - 60);
+    b = 50 + localT * (180 - 50);
+  } else if (t < 0.8) {
+    // Limestone -> Slate
+    const localT = (t - 0.6) / 0.2;
+    r = 170 + localT * (50 - 170);
+    g = 175 + localT * (80 - 175);
+    b = 180 + localT * (100 - 180);
   } else {
-    // Dark earth -> bedrock/jade
-    const t = (normDug - 0.75) / 0.25;
-    r = 80 + t * (60 - 80);
-    g = 55 + t * (120 - 55);
-    b = 40 + t * (60 - 40);
+    // Slate -> Obsidian
+    const localT = (t - 0.8) / 0.2;
+    r = 50  + localT * (35 - 50);
+    g = 80  + localT * (30 - 80);
+    b = 100 + localT * (40 - 100);
   }
+
   out[0] = r; out[1] = g; out[2] = b;
 }
 
@@ -624,9 +645,9 @@ function carveTine(x, y, radius, dirX, dirY) {
         
         // Progressive hardness: deeper layers are harder to dig
         // 2.0 (surface) = 1.0 hardness
-        // 0.1 (bottom) = ~4.0 hardness
+        // 0.1 (bottom) = ~5.0 hardness
         const depthFactor = (2.0 - currentH) / 1.9;
-        const hardness = 1.0 + depthFactor * 3.0;
+        const hardness = 1.0 + depthFactor * 4.0;
 
         const removeAmount = ((1.0 - targetHeight) * blendTarget) / hardness;
         newH = currentH - removeAmount;
