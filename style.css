@@ -348,11 +348,20 @@
   /* Depth progress pill (vertical, right side) */
   .depth-pill {
     position: absolute;
-    top: 6px;
-    bottom: 6px;
-    right: -24px;
+    top: 5%;
+    bottom: 3%;
+    right: -44px;
     display: flex;
-    gap: 8px;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+  }
+  .depth-pill-text {
+    color: #5a4a35;
+    font-size: 9px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    white-space: nowrap;
   }
   .depth-pill-bar {
     position: relative;
@@ -368,7 +377,7 @@
     );
     background-color: rgb(35, 30, 40);
     overflow: visible;
-    height: 100%;
+    flex: 1;
   }
   .depth-pill-marker {
     position: absolute;
@@ -380,6 +389,7 @@
     top: 0%;
     transition: top 0.15s ease-out;
     box-shadow: 0 0 4px rgba(232, 213, 183, 0.5);
+    z-index: 1;
   }
   .depth-pill-marker::after {
     content: '';
@@ -396,7 +406,7 @@
   .cleared-pill-bar {
     position: relative;
     width: 12px;
-    height: 100%;
+    flex: 1;
     border-radius: 999px;
     background: #2a2218;
     overflow: hidden;
@@ -410,15 +420,4 @@
     background: #c2a67d;
     border-radius: 999px;
     transition: height 0.15s ease-out;
-  }
-  .cleared-pill-label {
-    position: absolute;
-    bottom: -18px;
-    right: 0;
-    color: #5a4a35;
-    font-size: 9px;
-    letter-spacing: 0.05em;
-    white-space: nowrap;
-    width: 100%;
-    text-align: center;
   }

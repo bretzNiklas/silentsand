@@ -982,26 +982,27 @@ const depthMarker = document.getElementById('depthMarker');
 const depthBar = document.querySelector('.depth-pill-bar');
 const clearedBar = document.getElementById('clearedBar');
 const clearedFill = document.getElementById('clearedFill');
-const clearedLabel = document.getElementById('clearedLabel');
+const depthPillText = document.getElementById('depthPillText');
 let reachedBottom = false;
 function updateDepthPill() {
   if (!reachedBottom) {
-    const pct = (2.0 - deepestHeight) / 1.9 * 100;
+    const raw = (2.0 - deepestHeight) / 1.99 * 100;
+    const pct = 4 + raw * 0.99;
     depthMarker.style.top = pct + '%';
     if (deepestHeight <= 0.1) {
       reachedBottom = true;
       depthBar.style.display = 'none';
       clearedBar.style.display = '';
-      clearedLabel.style.display = '';
+      depthPillText.textContent = '0%';
     }
   } else {
     let cleared = 0;
     for (let i = 0; i < totalPixels; i++) {
-      if (sandHeight[i] < 1.9) cleared++;
+      if (sandHeight[i] < 1.95) cleared++;
     }
     const clearedPct = (cleared / totalPixels * 100);
     clearedFill.style.height = clearedPct + '%';
-    clearedLabel.textContent = Math.round(clearedPct) + '%';
+    depthPillText.textContent = Math.round(clearedPct) + '%';
   }
 }
 
@@ -1476,7 +1477,7 @@ function enterDiggingMode() {
   reachedBottom = false;
   depthBar.style.display = '';
   clearedBar.style.display = 'none';
-  clearedLabel.style.display = 'none';
+  depthPillText.textContent = 'Depth';
   depthPill.style.display = 'flex';
   updateDepthPill();
 
