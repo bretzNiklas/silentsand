@@ -3,6 +3,73 @@ const ctx = canvas.getContext('2d');
 const clearBtn = document.getElementById('clearBtn');
 const undoBtn = document.getElementById('undoBtn');
 const redoBtn = document.getElementById('redoBtn');
+const digBtn = document.getElementById('digBtn');
+
+// --- Digging Mode State ---
+let diggingMode = false;
+let savedGardenState = null;   // {h, r, g, b} snapshot
+let quotePixels = null;        // Uint8Array bitmask: 1 = text pixel
+// (dig mode uses subtractive carving — no accumulator needed)
+
+const ZEN_QUOTES = [
+  "The obstacle is the path.",
+  "Be still and know.",
+  "Let go or be dragged.",
+  "This too shall pass.",
+  "Be where you are.",
+  "Breathe in calm, breathe out tension.",
+  "Peace comes from within.",
+  "The present moment is all you have.",
+  "Silence is the language of the soul.",
+  "In stillness, find your strength.",
+  "Flow like water.",
+  "Nothing is permanent.",
+  "Simplicity is the ultimate sophistication.",
+  "The journey is the reward.",
+  "Be patient with yourself.",
+  "Every moment is a fresh beginning.",
+  "Less is more.",
+  "Find beauty in imperfection.",
+  "The mind is everything.",
+  "Seek peace within.",
+  "Do not dwell in the past.",
+  "What you think, you become.",
+  "The only way out is through.",
+  "Embrace the unknown.",
+  "Still water runs deep.",
+  "Where there is peace, there is growth.",
+  "One step at a time.",
+  "Your calm is your power.",
+  "The quieter you become, the more you hear.",
+  "Let it be.",
+  "Nature does not hurry, yet everything is accomplished.",
+  "Happiness is a direction, not a place.",
+  "To understand everything is to forgive everything.",
+  "The mind is its own place.",
+  "Fall seven times, stand up eight.",
+  "When you realize nothing is lacking, the world belongs to you.",
+  "Do not seek, do not search, do not ask, do not knock. It will find you.",
+  "Before enlightenment, chop wood, carry water.",
+  "Zen is not some kind of excitement, but concentration on our usual everyday routine.",
+  "When walking, walk. When eating, eat.",
+  "No snowflake ever falls in the wrong place.",
+  "The only Zen you find on mountaintops is the Zen you bring there.",
+  "Sitting quietly, doing nothing, spring comes, and the grass grows by itself.",
+  "To a mind that is still, the whole universe surrenders.",
+  "If you are depressed, you are living in the past. If you are anxious, you are living in the future.",
+  "The best time to plant a tree was twenty years ago. The second best time is now.",
+  "A flower does not think of competing with the flower next to it. It just blooms.",
+  "Mountains do not rise without earthquakes.",
+  "You cannot see your reflection in boiling water.",
+  "What the caterpillar calls the end, the rest of the world calls a butterfly.",
+];
+
+function getDailyQuote() {
+  const now = new Date();
+  const start = new Date(now.getFullYear(), 0, 0);
+  const dayOfYear = Math.floor((now - start) / 86400000);
+  return ZEN_QUOTES[dayOfYear % ZEN_QUOTES.length];
+}
 
 // --- Undo/Redo System ---
 const MAX_UNDO = 10;
@@ -311,6 +378,7 @@ function generateNoiseMap() {
 }
 
 function clearSand() {
+  if (diggingMode) return;
   saveState(); // Save state before clearing
   tlResumeForInteraction();
   initSand();
@@ -518,16 +586,25 @@ function carveTine(x, y, radius, dirX, dirY) {
       const idx = rowBase + px;
       const currentH = sandHeight[idx];
 
-      const blended = currentH * blendInv + targetHeight * blendTarget;
-      if (currentH > blended) {
-        const displaced = currentH - blended;
+      let newH;
+      if (diggingMode) {
+        // Subtractive carving: each pass removes a fixed amount (no convergence)
+        if (targetHeight >= 1.0) continue; // skip rim regions
+        const removeAmount = (1.0 - targetHeight) * blendTarget;
+        newH = currentH - removeAmount;
+        if (newH < 0.1) newH = 0.1;
+      } else {
+        newH = currentH * blendInv + targetHeight * blendTarget;
+      }
+      if (currentH > newH) {
+        const displaced = currentH - newH;
         dispIdx[dispCount] = idx;
         dispAmount[dispCount] = displaced;
         dispSrcR[dispCount] = sandR[idx];
         dispSrcG[dispCount] = sandG[idx];
         dispSrcB[dispCount] = sandB[idx];
         dispCount++;
-        sandHeight[idx] = blended;
+        sandHeight[idx] = newH;
       }
     }
   }
@@ -536,6 +613,8 @@ function carveTine(x, y, radius, dirX, dirY) {
   markDirty(ix, iy, r + 2);
 
   // Pass 2: distribute displaced sand using flat gaussian kernel arrays
+  // In dig mode, skip deposits — displaced sand vanishes (no rim buildup)
+  if (!diggingMode) {
   const fwdDist = r * cached.fwdD;
   const sideDist = r * cached.sideD;
   const spreadR = cached.spread;
@@ -617,6 +696,7 @@ function carveTine(x, y, radius, dirX, dirY) {
       markDirty(cx, cy, depositMarkR);
     }
   }
+  } // end if (!diggingMode)
 
   // Spawn sand particles from displaced pixels
   spawnParticles(ix, iy, ndx, ndy, dispCount);
@@ -852,15 +932,65 @@ function render() {
           lighting = 1.0 + dot * lightMul;
         }
 
-        const heightBrightness = 0.82 + 0.18 * (h < 0 ? 0 : h > 2 ? 2 : h);
-        const shade = lighting * heightBrightness;
-        const noise = noiseMap[idx] * shade * noiseMul;
+        if (diggingMode) {
+          // Digging mode: color layers based on how deep height has been carved
+          const dug = 1.0 - h;
+          const normDug = dug > 0.9 ? 1 : dug < 0 ? 0 : dug / 0.9;
 
-        // Uint8ClampedArray auto-clamps to [0, 255] — no Math.max/min needed
-        d[pi]     = baseR * shade + noise;
-        d[pi + 1] = baseG * shade + noise;
-        d[pi + 2] = baseB * shade + noise;
-        d[pi + 3] = 255;
+          // Normal groove lighting from sandHeight
+          const heightBr = 0.82 + 0.18 * (h < 0 ? 0 : h > 2 ? 2 : h);
+          const shade = lighting * heightBr;
+          const noise = noiseMap[idx] * shade * noiseMul;
+
+          // Layer color based on total accumulated depth
+          let lR, lG, lB;
+          if (normDug < 0.25) {
+            // Sand surface (cream)
+            lR = 210; lG = 190; lB = 160;
+          } else if (normDug < 0.50) {
+            // Sand → clay (180, 115, 65)
+            const t = (normDug - 0.25) / 0.25;
+            lR = 210 + t * (180 - 210);
+            lG = 190 + t * (115 - 190);
+            lB = 160 + t * (65 - 160);
+          } else if (normDug < 0.75) {
+            // Clay → dark earth (85, 60, 40)
+            const t = (normDug - 0.50) / 0.25;
+            lR = 180 + t * (85 - 180);
+            lG = 115 + t * (60 - 115);
+            lB = 65 + t * (40 - 65);
+          } else {
+            // Dark earth → green (75, 145, 75)
+            const t = (normDug - 0.75) / 0.25;
+            lR = 85 + t * (75 - 85);
+            lG = 60 + t * (145 - 60);
+            lB = 40 + t * (75 - 40);
+          }
+
+          if (normDug > 0.85 && quotePixels && quotePixels[idx]) {
+            // Quote reveal: blend toward warm accent #e8d5b7
+            const qt = (normDug - 0.85) / 0.15;
+            const qInv = 1 - qt;
+            d[pi]     = lR * shade * qInv + 232 * qt + noise;
+            d[pi + 1] = lG * shade * qInv + 213 * qt + noise;
+            d[pi + 2] = lB * shade * qInv + 183 * qt + noise;
+          } else {
+            d[pi]     = lR * shade + noise;
+            d[pi + 1] = lG * shade + noise;
+            d[pi + 2] = lB * shade + noise;
+          }
+          d[pi + 3] = 255;
+        } else {
+          const heightBrightness = 0.82 + 0.18 * (h < 0 ? 0 : h > 2 ? 2 : h);
+          const shade = lighting * heightBrightness;
+          const noise = noiseMap[idx] * shade * noiseMul;
+
+          // Uint8ClampedArray auto-clamps to [0, 255] — no Math.max/min needed
+          d[pi]     = baseR * shade + noise;
+          d[pi + 1] = baseG * shade + noise;
+          d[pi + 2] = baseB * shade + noise;
+          d[pi + 3] = 255;
+        }
       }
     }
 
@@ -1140,6 +1270,128 @@ canvas.addEventListener('touchend', (e) => {
 });
 
 clearBtn.addEventListener('click', clearSand);
+
+// --- Digging Mode ---
+function buildQuotePixels() {
+  const quote = getDailyQuote();
+  const offscreen = document.createElement('canvas');
+  offscreen.width = W;
+  offscreen.height = H;
+  const octx = offscreen.getContext('2d');
+
+  // Auto-size font: start large, shrink to fit with word-wrap
+  let fontSize = Math.floor(Math.min(W, H) * 0.12);
+  const minFontSize = 14;
+  const maxWidth = W * 0.75;
+  const lineHeight = 1.4;
+
+  function wrapText(text, maxW, fSize) {
+    octx.font = `600 ${fSize}px "Segoe UI", system-ui, sans-serif`;
+    const words = text.split(' ');
+    const lines = [];
+    let line = '';
+    for (const word of words) {
+      const test = line ? line + ' ' + word : word;
+      if (octx.measureText(test).width > maxW && line) {
+        lines.push(line);
+        line = word;
+      } else {
+        line = test;
+      }
+    }
+    if (line) lines.push(line);
+    return lines;
+  }
+
+  // Shrink font until text fits
+  let lines;
+  while (fontSize >= minFontSize) {
+    lines = wrapText(quote, maxWidth, fontSize);
+    const totalH = lines.length * fontSize * lineHeight;
+    if (totalH < H * 0.6) break;
+    fontSize -= 2;
+  }
+
+  // Render centered text
+  octx.clearRect(0, 0, W, H);
+  octx.font = `600 ${fontSize}px "Segoe UI", system-ui, sans-serif`;
+  octx.fillStyle = '#fff';
+  octx.textAlign = 'center';
+  octx.textBaseline = 'middle';
+  const totalHeight = lines.length * fontSize * lineHeight;
+  const startY = (H - totalHeight) / 2 + fontSize * lineHeight / 2;
+  for (let i = 0; i < lines.length; i++) {
+    octx.fillText(lines[i], W / 2, startY + i * fontSize * lineHeight);
+  }
+
+  // Read alpha channel into bitmask
+  const id = octx.getImageData(0, 0, W, H);
+  const d = id.data;
+  quotePixels = new Uint8Array(totalPixels);
+  for (let i = 0; i < totalPixels; i++) {
+    quotePixels[i] = d[i * 4 + 3] > 128 ? 1 : 0;
+  }
+}
+
+function enterDiggingMode() {
+  savedGardenState = getCurrentState();
+  undoStack.length = 0;
+  redoStack.length = 0;
+  updateHistoryBtns();
+
+  buildQuotePixels();
+
+  // Fill sand to normal height
+  const def = SAND_COLORS[0];
+  for (let i = 0; i < totalPixels; i++) {
+    sandHeight[i] = 1.0;
+    sandR[i] = def[0];
+    sandG[i] = def[1];
+    sandB[i] = def[2];
+  }
+  generateNoiseMap();
+
+  diggingMode = true;
+  digBtn.textContent = 'Exit Dig';
+  digBtn.classList.add('active');
+  clearBtn.disabled = true;
+  clearBtn.style.opacity = '0.4';
+  quickSaveBtn.disabled = true;
+  quickSaveBtn.style.opacity = '0.4';
+
+  markFullDirty();
+  requestRender();
+}
+
+function exitDiggingMode() {
+  sandHeight.set(savedGardenState.h);
+  sandR.set(savedGardenState.r);
+  sandG.set(savedGardenState.g);
+  sandB.set(savedGardenState.b);
+  savedGardenState = null;
+  quotePixels = null;
+
+  diggingMode = false;
+  // Clear undo/redo from digging session
+  undoStack.length = 0;
+  redoStack.length = 0;
+  updateHistoryBtns();
+
+  digBtn.textContent = 'Dig';
+  digBtn.classList.remove('active');
+  clearBtn.disabled = false;
+  clearBtn.style.opacity = '1';
+  quickSaveBtn.disabled = false;
+  quickSaveBtn.style.opacity = '1';
+
+  markFullDirty();
+  requestRender();
+}
+
+digBtn.addEventListener('click', () => {
+  if (introPlaying) return;
+  diggingMode ? exitDiggingMode() : enterDiggingMode();
+});
 
 const settingsBtn = document.getElementById('settingsBtn');
 const settingsPanel = document.getElementById('settingsPanel');
@@ -1463,6 +1715,9 @@ async function loadFromBrowser(id) {
     request.onsuccess = () => {
       const data = request.result;
       if (!data) return reject("Save not found");
+
+      // Exit digging mode if active
+      if (diggingMode) exitDiggingMode();
 
       // Use existing initGarden logic
       initGarden(data.w, data.h);
