@@ -23,16 +23,22 @@
   .mode-selector {
     display: flex;
     justify-content: center;
-    gap: 24px;
+    gap: 0;
     margin-bottom: 14px;
+    background: #2a2218;
+    border: 1px solid #5a4a35;
+    border-radius: 999px;
+    padding: 3px;
   }
   .mode-btn {
     background: none;
     border: none;
-    border-bottom: 2px solid transparent;
+    border-radius: 999px;
     color: #5a4a35;
-    padding: 6px 4px;
-    font-size: 13px;
+    padding: 6px 0;
+    width: 120px;
+    text-align: center;
+    font-size: 12px;
     letter-spacing: 0.15em;
     text-transform: uppercase;
     cursor: pointer;
@@ -42,8 +48,8 @@
   .mode-btn:hover { opacity: 1; color: #c2a67d; }
   .mode-btn.active {
     opacity: 1;
-    color: #c2a67d;
-    border-bottom: 2px solid #c2a67d;
+    color: #e8d5b7;
+    background: #5a4a35;
   }
 
   canvas {
@@ -342,9 +348,11 @@
   /* Depth progress pill (vertical, right side) */
   .depth-pill {
     position: absolute;
-    top: 0;
-    bottom: 0;
+    top: 6px;
+    bottom: 6px;
     right: -24px;
+    display: flex;
+    gap: 8px;
   }
   .depth-pill-bar {
     position: relative;
@@ -358,15 +366,15 @@
       rgb(50, 80, 100) 80%,
       rgb(35, 30, 40) 100%
     );
-    border: 1px solid #5a4a3566;
+    background-color: rgb(35, 30, 40);
     overflow: visible;
     height: 100%;
   }
   .depth-pill-marker {
     position: absolute;
-    left: -6px;
+    left: 0;
     height: 2px;
-    width: 24px;
+    width: 14px;
     background: #e8d5b7;
     border-radius: 1px;
     top: 0%;
@@ -384,4 +392,33 @@
     border-top: 4px solid transparent;
     border-bottom: 4px solid transparent;
     border-left: 4px solid #e8d5b7;
+  }
+  .cleared-pill-bar {
+    position: relative;
+    width: 12px;
+    height: 100%;
+    border-radius: 999px;
+    background: #2a2218;
+    overflow: hidden;
+  }
+  .cleared-pill-fill {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 0%;
+    background: #c2a67d;
+    border-radius: 999px;
+    transition: height 0.15s ease-out;
+  }
+  .cleared-pill-label {
+    position: absolute;
+    bottom: -18px;
+    right: 0;
+    color: #5a4a35;
+    font-size: 9px;
+    letter-spacing: 0.05em;
+    white-space: nowrap;
+    width: 100%;
+    text-align: center;
   }

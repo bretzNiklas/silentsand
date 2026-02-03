@@ -979,9 +979,30 @@ let lastFps = 0;
 // --- Depth pill ---
 const depthPill = document.getElementById('depthPill');
 const depthMarker = document.getElementById('depthMarker');
+const depthBar = document.querySelector('.depth-pill-bar');
+const clearedBar = document.getElementById('clearedBar');
+const clearedFill = document.getElementById('clearedFill');
+const clearedLabel = document.getElementById('clearedLabel');
+let reachedBottom = false;
 function updateDepthPill() {
-  const pct = (2.0 - deepestHeight) / 1.9 * 100;
-  depthMarker.style.top = pct + '%';
+  if (!reachedBottom) {
+    const pct = (2.0 - deepestHeight) / 1.9 * 100;
+    depthMarker.style.top = pct + '%';
+    if (deepestHeight <= 0.1) {
+      reachedBottom = true;
+      depthBar.style.display = 'none';
+      clearedBar.style.display = '';
+      clearedLabel.style.display = '';
+    }
+  } else {
+    let cleared = 0;
+    for (let i = 0; i < totalPixels; i++) {
+      if (sandHeight[i] < 1.9) cleared++;
+    }
+    const clearedPct = (cleared / totalPixels * 100);
+    clearedFill.style.height = clearedPct + '%';
+    clearedLabel.textContent = Math.round(clearedPct) + '%';
+  }
 }
 
 // --- Render (optimization #2: dirty-region, #5: reused ImageData) ---
@@ -1452,7 +1473,11 @@ function enterDiggingMode() {
 
   // Reset depth tracking and show pill
   deepestHeight = 2.0;
-  depthPill.style.display = '';
+  reachedBottom = false;
+  depthBar.style.display = '';
+  clearedBar.style.display = 'none';
+  clearedLabel.style.display = 'none';
+  depthPill.style.display = 'flex';
   updateDepthPill();
 
   buildQuotePixels();
