@@ -8,8 +8,23 @@ const digBtn = document.getElementById('digBtn');
 // --- Digging Mode State ---
 let diggingMode = false;
 let savedGardenState = null;   // {h, r, g, b} snapshot
+let savedRakeSettings = null;  // slider values snapshot for restoring on dig exit
 let quotePixels = null;        // Uint8Array bitmask: 1 = text pixel
 // (dig mode uses subtractive carving — no accumulator needed)
+
+// Fixed rake settings for digging mode
+const DIG_RAKE_SETTINGS = {
+  tineRadius: 8,
+  tineCount: 6,
+  gapMul: 2.5,
+  depth: 0.10,
+  rim: 0.05,
+  blend: 0.55,
+  step: 0.30,
+  spread: 1,
+  fwdD: 0.59,
+  sideD: 0.66,
+};
 
 const ZEN_QUOTES = [
   "The obstacle is the path.",
@@ -1384,11 +1399,42 @@ function buildQuotePixels() {
   }
 }
 
+function applySliderValues(values) {
+  for (const key of Object.keys(values)) {
+    const entry = sliderEls[key];
+    if (!entry) continue;
+    const { el, labelEl } = entry;
+    el.value = values[key];
+    const def = SLIDER_CONFIG.find(c => c.key === key);
+    cached[key] = def.parse(el.value);
+    if (labelEl) labelEl.textContent = el.value;
+  }
+  tineProfileR = -1;
+  rebuildGaussKernel();
+  markCursorDirty();
+}
+
 function enterDiggingMode() {
   savedGardenState = getCurrentState();
   undoStack.length = 0;
   redoStack.length = 0;
   updateHistoryBtns();
+
+  // Save current rake settings and apply fixed dig settings
+  savedRakeSettings = {};
+  for (const key of Object.keys(DIG_RAKE_SETTINGS)) {
+    savedRakeSettings[key] = sliderEls[key].el.value;
+  }
+  applySliderValues(DIG_RAKE_SETTINGS);
+
+  // Disable rake/tuning sliders and grey out tabs during dig mode
+  for (const key of Object.keys(DIG_RAKE_SETTINGS)) {
+    sliderEls[key].el.disabled = true;
+  }
+  document.getElementById('tab-rake').style.opacity = '0.4';
+  document.getElementById('tab-rake').style.pointerEvents = 'none';
+  document.getElementById('tab-tuning').style.opacity = '0.4';
+  document.getElementById('tab-tuning').style.pointerEvents = 'none';
 
   buildQuotePixels();
 
@@ -1427,6 +1473,19 @@ function exitDiggingMode() {
   undoStack.length = 0;
   redoStack.length = 0;
   updateHistoryBtns();
+
+  // Restore rake settings and re-enable sliders
+  if (savedRakeSettings) {
+    applySliderValues(savedRakeSettings);
+    savedRakeSettings = null;
+  }
+  for (const key of Object.keys(DIG_RAKE_SETTINGS)) {
+    sliderEls[key].el.disabled = false;
+  }
+  document.getElementById('tab-rake').style.opacity = '';
+  document.getElementById('tab-rake').style.pointerEvents = '';
+  document.getElementById('tab-tuning').style.opacity = '';
+  document.getElementById('tab-tuning').style.pointerEvents = '';
 
   digBtn.textContent = 'Dig';
   digBtn.classList.remove('active');
