@@ -33,11 +33,6 @@
     "@type": "Offer",
     "price": "0",
     "priceCurrency": "USD"
-  },
-  "aggregateRating": {
-    "@type": "AggregateRating",
-    "ratingValue": "4.8",
-    "ratingCount": "120"
   }
 }
 </script>
@@ -45,6 +40,21 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Silent Sand - Virtual Mindfulness & Sand Raking</title>
 <meta name="description" content="Experience peace with Silent Sand. Create satisfying sand patterns, practice mindfulness, and reduce stress with this free virtual Japanese rock garden simulator.">
+
+<!-- Open Graph / Facebook -->
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://silentsand.me/">
+<meta property="og:title" content="Silent Sand - Virtual Mindfulness & Sand Raking">
+<meta property="og:description" content="Experience peace with Silent Sand. Create satisfying sand patterns, practice mindfulness, and reduce stress with this free virtual Japanese rock garden simulator.">
+<meta property="og:image" content="https://silentsand.me/favicon/android-chrome-512x512.png">
+
+<!-- Twitter -->
+<meta property="twitter:card" content="summary_large_image">
+<meta property="twitter:url" content="https://silentsand.me/">
+<meta property="twitter:title" content="Silent Sand - Virtual Mindfulness & Sand Raking">
+<meta property="twitter:description" content="Experience peace with Silent Sand. Create satisfying sand patterns, practice mindfulness, and reduce stress with this free virtual Japanese rock garden simulator.">
+<meta property="twitter:image" content="https://silentsand.me/favicon/android-chrome-512x512.png">
+
 <link rel="apple-touch-icon" sizes="180x180" href="favicon/apple-touch-icon.png">
 <link rel="icon" type="image/png" sizes="32x32" href="favicon/favicon-32x32.png">
 <link rel="icon" type="image/png" sizes="16x16" href="favicon/favicon-16x16.png">
@@ -53,9 +63,9 @@
 </head>
 <body>
 <div style="position: fixed; top: 8px; right: 12px; color: #c2a67d; font-size: 12px; font-weight: 600; opacity: 0.45; letter-spacing: 0.03em; z-index: 10;">Ctrl+D to bookmark this site :)</div>
-<h1>silentsand.me</h1>
+<h1>Silent Sand: Virtual Zen Garden & Mindfulness Tool</h1>
 <div style="position: relative; display: inline-block; overflow: hidden; border-radius: 6px;">
-  <canvas id="garden"></canvas>
+  <canvas id="garden" aria-label="Interactive sand garden. Use mouse to rake patterns."></canvas>
   <img id="guideOverlay" src="" alt="" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; opacity: 0; object-fit: contain;">
   <svg id="symmetryLines" style="position:absolute; top:0; left:0; width:100%; height:100%; pointer-events:none; display:none;">
     <line id="symV" class="sym-line" x1="50%" y1="0" x2="50%" y2="100%" style="display:none;" />
@@ -294,6 +304,10 @@
     </article>
   </section>
 </div>
+
+<footer style="margin-top: 60px; padding: 20px; text-align: center; font-size: 12px; color: #5a4a3566;">
+   <p>&copy; 2026 Silent Sand.</p>
+</footer>
 
 <script src="script.js"></script>
 </body>
