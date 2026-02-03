@@ -194,11 +194,8 @@
   .gear-btn {
     flex: 0 0 auto;
     padding: 6px 12px;
-    font-size: 10px;
     line-height: 1;
     border-radius: 4px;
-    letter-spacing: 0;
-    text-transform: none;
   }
 
   /* Section labels for slider groups */
@@ -335,4 +332,56 @@
     font-size: 11px;
     letter-spacing: 0.05em;
     min-width: 50px;
+  }
+
+  /* Canvas + depth pill row */
+  .canvas-row {
+    position: relative;
+  }
+
+  /* Depth progress pill (vertical, right side) */
+  .depth-pill {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    right: -24px;
+  }
+  .depth-pill-bar {
+    position: relative;
+    width: 12px;
+    border-radius: 999px;
+    background: linear-gradient(to bottom,
+      rgb(225, 210, 185) 0%,
+      rgb(185, 100, 60) 20%,
+      rgb(80, 60, 50) 40%,
+      rgb(170, 175, 180) 60%,
+      rgb(50, 80, 100) 80%,
+      rgb(35, 30, 40) 100%
+    );
+    border: 1px solid #5a4a3566;
+    overflow: visible;
+    height: 100%;
+  }
+  .depth-pill-marker {
+    position: absolute;
+    left: -6px;
+    height: 2px;
+    width: 24px;
+    background: #e8d5b7;
+    border-radius: 1px;
+    top: 0%;
+    transition: top 0.15s ease-out;
+    box-shadow: 0 0 4px rgba(232, 213, 183, 0.5);
+  }
+  .depth-pill-marker::after {
+    content: '';
+    position: absolute;
+    right: -4px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 0;
+    height: 0;
+    border-top: 4px solid transparent;
+    border-bottom: 4px solid transparent;
+    border-left: 4px solid #e8d5b7;
   }

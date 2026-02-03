@@ -9,6 +9,7 @@ let diggingMode = false;
 let savedGardenState = null;   // {h, r, g, b} snapshot
 let savedRakeSettings = null;  // slider values snapshot for restoring on dig exit
 let quotePixels = null;        // Uint8Array bitmask: 1 = text pixel
+let deepestHeight = 2.0;      // tracks minimum sandHeight during dig session
 // (dig mode uses subtractive carving — no accumulator needed)
 
 // Fixed rake settings for digging mode
@@ -669,6 +670,7 @@ function carveTine(x, y, radius, dirX, dirY) {
         const removeAmount = ((1.0 - targetHeight) * blendTarget) / hardness;
         newH = currentH - removeAmount;
         if (newH < 0.1) newH = 0.1;
+        if (newH < deepestHeight) deepestHeight = newH;
 
         // Update backing color arrays to match the new depth
         // This ensures particles and subsequent renders reflect the exposed layer
@@ -974,6 +976,14 @@ let lastRenderTime = 0;
 let lastFrameTs = 0;
 let lastFps = 0;
 
+// --- Depth pill ---
+const depthPill = document.getElementById('depthPill');
+const depthMarker = document.getElementById('depthMarker');
+function updateDepthPill() {
+  const pct = (2.0 - deepestHeight) / 1.9 * 100;
+  depthMarker.style.top = pct + '%';
+}
+
 // --- Render (optimization #2: dirty-region, #5: reused ImageData) ---
 function render() {
   const renderStart = performance.now();
@@ -1136,6 +1146,8 @@ function render() {
 
   // Draw watermark for timelapse recording
   tlDrawWatermark();
+
+  if (diggingMode) updateDepthPill();
 
   // Update performance readout
   const renderEnd = performance.now();
@@ -1438,6 +1450,11 @@ function enterDiggingMode() {
   clearBtn.parentElement.style.display = 'none';
   settingsPanel.style.display = 'none';
 
+  // Reset depth tracking and show pill
+  deepestHeight = 2.0;
+  depthPill.style.display = '';
+  updateDepthPill();
+
   buildQuotePixels();
 
   // Fill sand to normal height
@@ -1465,6 +1482,7 @@ function exitDiggingMode() {
   quotePixels = null;
 
   diggingMode = false;
+  depthPill.style.display = 'none';
   // Clear undo/redo from digging session
   undoStack.length = 0;
   redoStack.length = 0;
@@ -1496,7 +1514,7 @@ settingsBtn.addEventListener('click', () => {
   const open = !settingsPanel.classList.contains('collapsed');
   settingsPanel.classList.toggle('collapsed', open);
   settingsBtn.classList.toggle('active', !open);
-  settingsBtn.textContent = open ? '\u25B2' : '\u25BC';
+  settingsBtn.textContent = open ? '\u25B2 Options' : '\u25BC Options';
 });
 
 // --- Mode Selector ---
