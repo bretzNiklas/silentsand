@@ -360,6 +360,10 @@ const TL_IDLE_DELAY = 2000;
 const TL_FPS = 30;
 const TL_MAX_BYTES = 500 * 1024 * 1024; // 500MB
 
+// --- Intro animation state ---
+let introPlaying = false;
+let introAnimId = null;
+
 // --- Drawing state ---
 let drawing = false;
 let lastX = -1, lastY = -1;
@@ -839,6 +843,7 @@ function axisLock(x, y) {
 // Mouse events
 canvas.addEventListener('mousedown', (e) => {
   if (e.target !== canvas) return;
+  abortIntro();
   saveState(); // Save state before stroke
   drawing = true;
   tlResumeForInteraction();
@@ -905,6 +910,7 @@ canvas.addEventListener('mouseenter', () => {
 canvas.addEventListener('touchstart', (e) => {
   if (e.target !== canvas) return;
   e.preventDefault();
+  abortIntro();
   saveState(); // Save state before stroke
   drawing = true;
   tlResumeForInteraction();
@@ -1553,6 +1559,74 @@ document.addEventListener('visibilitychange', () => {
   }
 });
 
+// --- Intro Animation ---
+function abortIntro() {
+  if (!introPlaying) return;
+  cancelAnimationFrame(introAnimId);
+  introPlaying = false;
+  introAnimId = null;
+  drawing = false;
+}
+
+function playIntroAnimation() {
+  // Cubic Bézier control points (relative to canvas size)
+  const p0x = W * 0.15,  p0y = H * 0.20;
+  const p1x = W * 0.35,  p1y = H * 0.05;
+  const p2x = W * 0.65,  p2y = H * 0.95;
+  const p3x = W * 0.85,  p3y = H * 0.80;
+
+  const duration = 1800;
+  let startTs = null;
+
+  introPlaying = true;
+  drawing = true;
+
+  function bezier(t) {
+    const u = 1 - t;
+    const uu = u * u;
+    const tt = t * t;
+    return [
+      uu * u * p0x + 3 * uu * t * p1x + 3 * u * tt * p2x + tt * t * p3x,
+      uu * u * p0y + 3 * uu * t * p1y + 3 * u * tt * p2y + tt * t * p3y
+    ];
+  }
+
+  // Ease-in-out (smoothstep)
+  function ease(t) {
+    return t * t * (3 - 2 * t);
+  }
+
+  function tick(ts) {
+    if (!introPlaying) return;
+
+    if (startTs === null) {
+      startTs = ts;
+      saveState();
+      const [sx, sy] = bezier(0);
+      lastX = sx; lastY = sy;
+      strokeDX = 0; strokeDY = 0;
+    }
+
+    const elapsed = ts - startTs;
+    const raw = Math.min(elapsed / duration, 1);
+    const t = ease(raw);
+    const [cx, cy] = bezier(t);
+
+    strokeTo(cx, cy);
+    requestRender();
+
+    if (raw < 1) {
+      introAnimId = requestAnimationFrame(tick);
+    } else {
+      introPlaying = false;
+      introAnimId = null;
+      drawing = false;
+    }
+  }
+
+  introAnimId = requestAnimationFrame(tick);
+}
+
 // --- Init ---
 setupSliders();
 loadSettings();
@@ -1562,3 +1636,4 @@ initGarden(
 );
 rebuildGaussKernel();
 clearSand();
+playIntroAnimation();
