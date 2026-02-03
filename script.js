@@ -269,6 +269,7 @@ const SLIDER_CONFIG = [
   { id: 'dbgSideD', key: 'sideD', parse: parseFloat, labelId: 'dbgSideDLabel' },
   { id: 'dbgNormD', key: 'normD', parse: parseInt, labelId: 'dbgNormDLabel', onChange() { markFullDirty(); requestRender(); } },
   { id: 'dbgNoise', key: 'noise', parse: parseFloat, labelId: 'dbgNoiseLabel', onChange() { markFullDirty(); requestRender(); } },
+  { id: 'dbgParticles', key: 'particles', parse: parseInt, labelId: 'dbgParticlesLabel' },
 ];
 
 const sliderEls = {};
@@ -329,13 +330,24 @@ function getTineCount() {
   return cached.tineCount;
 }
 
+let rtoCache = null;
+let rtoCacheCount = -1, rtoCacheGap = -1, rtoCacheRadius = -1;
+
 function getRakeTineOffsets(tineRadius) {
   const count = cached.tineCount;
-  const spacing = cached.gapMul * tineRadius;
-  const offsets = [];
-  for (let i = 0; i < count; i++) {
-    offsets.push((i - (count - 1) / 2) * spacing);
+  const gap = cached.gapMul;
+  if (rtoCache && count === rtoCacheCount && gap === rtoCacheGap && tineRadius === rtoCacheRadius) {
+    return rtoCache;
   }
+  rtoCacheCount = count;
+  rtoCacheGap = gap;
+  rtoCacheRadius = tineRadius;
+  const spacing = gap * tineRadius;
+  const offsets = new Array(count);
+  for (let i = 0; i < count; i++) {
+    offsets[i] = (i - (count - 1) / 2) * spacing;
+  }
+  rtoCache = offsets;
   return offsets;
 }
 
@@ -395,19 +407,30 @@ function getRakePerp() {
   return [Math.cos(rakeAngle), Math.sin(rakeAngle)];
 }
 
+// Cache canvas bounding rect to avoid layout reflow on every mouse event
+let canvasRect = null;
+let canvasScaleX = 1, canvasScaleY = 1;
+
+function updateCanvasRect() {
+  canvasRect = canvas.getBoundingClientRect();
+  canvasScaleX = W / canvasRect.width;
+  canvasScaleY = H / canvasRect.height;
+}
+
+window.addEventListener('resize', updateCanvasRect);
+new ResizeObserver(updateCanvasRect).observe(canvas);
+
 function getPos(e) {
-  const rect = canvas.getBoundingClientRect();
-  const scaleX = W / rect.width;
-  const scaleY = H / rect.height;
+  if (!canvasRect) updateCanvasRect();
   if (e.touches) {
     return [
-      (e.touches[0].clientX - rect.left) * scaleX,
-      (e.touches[0].clientY - rect.top) * scaleY
+      (e.touches[0].clientX - canvasRect.left) * canvasScaleX,
+      (e.touches[0].clientY - canvasRect.top) * canvasScaleY
     ];
   }
   return [
-    (e.clientX - rect.left) * scaleX,
-    (e.clientY - rect.top) * scaleY
+    (e.clientX - canvasRect.left) * canvasScaleX,
+    (e.clientY - canvasRect.top) * canvasScaleY
   ];
 }
 
@@ -601,10 +624,11 @@ function carveTine(x, y, radius, dirX, dirY) {
 
 // --- Particle functions ---
 function spawnParticles(x, y, dirX, dirY, dispCount) {
-  if (dispCount === 0) return;
-  // Sample a small fraction of displaced pixels
-  const sampleRate = 0.04;
-  const maxSpawn = 5;
+  const intensity = cached.particles;
+  if (dispCount === 0 || intensity === 0) return;
+  // Sample a fraction of displaced pixels, scaled by intensity slider
+  const sampleRate = 0.04 * (intensity / 50);
+  const maxSpawn = Math.max(1, Math.round(5 * (intensity / 50)));
   const count = Math.min(maxSpawn, Math.ceil(dispCount * sampleRate));
   const step = Math.max(1, Math.floor(dispCount / count));
 
