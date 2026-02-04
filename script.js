@@ -2384,23 +2384,27 @@ function initRemindersTab() {
     ).then((sub) => {
       if (sub && localStorage.getItem('ssReminderId')) {
         toggle.checked = true;
-        timePicker.disabled = false;
+        timePicker.classList.remove('reminder-off');
         status.textContent = 'Reminders on for ' + formatTime12h(savedTime);
       } else {
         // Subscription lost, re-subscribe silently
         subscribeToPush(savedTime).then((id) => {
           if (id) {
             toggle.checked = true;
-            timePicker.disabled = false;
+            timePicker.classList.remove('reminder-off');
             status.textContent = 'Reminders on for ' + formatTime12h(savedTime);
           } else {
             localStorage.setItem('ssReminderEnabled', 'false');
+            timePicker.classList.add('reminder-off');
           }
         }).catch(() => {
           localStorage.setItem('ssReminderEnabled', 'false');
+          timePicker.classList.add('reminder-off');
         });
       }
     });
+  } else {
+    timePicker.classList.add('reminder-off');
   }
 
   toggle.addEventListener('change', async () => {
@@ -2408,22 +2412,24 @@ function initRemindersTab() {
       try {
         const id = await subscribeToPush(timePicker.value);
         if (id) {
-          timePicker.disabled = false;
+          timePicker.classList.remove('reminder-off');
           localStorage.setItem('ssReminderEnabled', 'true');
           localStorage.setItem('ssReminderTime', timePicker.value);
           status.textContent = 'Reminders on for ' + formatTime12h(timePicker.value);
         } else {
           toggle.checked = false;
+          timePicker.classList.add('reminder-off');
           status.textContent = 'Permission denied — enable in browser settings';
         }
       } catch (err) {
         console.error('Reminder subscribe failed:', err);
         toggle.checked = false;
+        timePicker.classList.add('reminder-off');
         status.textContent = 'Could not enable reminders';
       }
     } else {
       await unsubscribeFromPush();
-      timePicker.disabled = true;
+      timePicker.classList.add('reminder-off');
       localStorage.setItem('ssReminderEnabled', 'false');
       status.textContent = 'Reminders disabled';
     }
