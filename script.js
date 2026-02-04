@@ -1465,9 +1465,10 @@ function enterDiggingMode() {
     sliderEls[key].el.disabled = true;
   }
 
-  // Hide button bar and settings panel
+  // Hide button bar and settings panel, show core description
   clearBtn.parentElement.style.display = 'none';
   settingsPanel.style.display = 'none';
+  document.getElementById('coreDesc').style.display = '';
 
   // Reset depth tracking and show pill
   deepestHeight = 2.0;
@@ -1520,9 +1521,10 @@ function exitDiggingMode() {
     sliderEls[key].el.disabled = false;
   }
 
-  // Show button bar and settings panel
+  // Show button bar and settings panel, hide core description
   clearBtn.parentElement.style.display = 'flex';
   settingsPanel.style.display = '';
+  document.getElementById('coreDesc').style.display = 'none';
 
   // Sync mode selector buttons
   document.querySelectorAll('.mode-btn').forEach(b => {
