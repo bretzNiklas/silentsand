@@ -10,7 +10,9 @@
       "Bash(git -C \"C:\\\\Users\\\\qwert\\\\Desktop\\\\zen-garden\" diff --stat)",
       "Bash(git -C \"C:\\\\Users\\\\qwert\\\\Desktop\\\\zen-garden\" log --oneline -5)",
       "Bash(git -C \"C:\\\\Users\\\\qwert\\\\Desktop\\\\zen-garden\" add index.html)",
-      "Bash(git -C \"C:\\\\Users\\\\qwert\\\\Desktop\\\\zen-garden\" commit:*)"
+      "Bash(git -C \"C:\\\\Users\\\\qwert\\\\Desktop\\\\zen-garden\" commit:*)",
+      "Bash(curl:*)",
+      "Bash(gcloud:*)"
     ]
   }
 }

@@ -69,6 +69,22 @@
   <button class="mode-btn" data-mode="core">To the Core</button>
 </div>
 <div class="canvas-row">
+  <div class="reminder-box" id="reminderBox">
+    <div class="reminder-box-title">Reminder</div>
+    <div class="reminder-box-row">
+      <label class="toggle-switch">
+        <input type="checkbox" id="reminderToggle">
+        <span class="toggle-slider"></span>
+      </label>
+    </div>
+    <input type="time" id="reminderTime" value="15:00" disabled style="width: 100%;">
+    <span id="reminderStatus" class="reminder-box-status"></span>
+    <p id="reminderHelp" class="reminder-box-help">
+      Daily zen reminder to take a mindful break.
+      <span id="reminderIosNote" style="display: none;"><br>On iOS, add to Home Screen first.</span>
+      <span id="reminderUnsupported" style="display: none; color: #ff444488;"><br>Not supported in this browser.</span>
+    </p>
+  </div>
   <div style="position: relative; display: inline-block; overflow: hidden; border-radius: 6px;">
     <canvas id="garden" aria-label="Interactive sand garden. Use mouse to rake patterns."></canvas>
     <img id="guideOverlay" src="" alt="" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; opacity: 0; object-fit: contain;">
@@ -282,6 +298,7 @@
       </div>
     </div>
   </div>
+
 </div>
 
 <div class="seo-content" style="max-width: 800px; margin: 95px auto 40px; padding: 0 20px; color: #c2a67d; opacity: 0.9;">

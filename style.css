@@ -343,6 +343,10 @@
   /* Canvas + depth pill row */
   .canvas-row {
     position: relative;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    gap: 16px;
   }
 
   /* Depth progress pill (vertical, right side) */
@@ -420,4 +424,62 @@
     background: #c2a67d;
     border-radius: 999px;
     transition: height 0.15s ease-out;
+  }
+
+  /* Reminder box (left of canvas) */
+  .reminder-box {
+    width: 120px;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 14px 12px;
+    background: #1a1a1a;
+    border: 1px solid #5a4a3544;
+    border-radius: 6px;
+  }
+  .reminder-box-title {
+    color: #5a4a35;
+    font-size: 9px;
+    font-weight: 600;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+  }
+  .reminder-box-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .reminder-box-status {
+    color: #5a4a35;
+    font-size: 10px;
+    letter-spacing: 0.05em;
+    line-height: 1.3;
+  }
+  .reminder-box-help {
+    color: #5a4a3577;
+    font-size: 10px;
+    line-height: 1.4;
+    margin: 0;
+  }
+
+  /* Reminder time picker */
+  input[type="time"] {
+    background: #2a2218;
+    border: 1px solid #5a4a35;
+    color: #c2a67d;
+    padding: 5px 10px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-family: inherit;
+    letter-spacing: 0.05em;
+    outline: none;
+    color-scheme: dark;
+  }
+  input[type="time"]:disabled {
+    opacity: 0.35;
+    cursor: default;
+  }
+  input[type="time"]::-webkit-calendar-picker-indicator {
+    filter: invert(0.7) sepia(0.5) hue-rotate(350deg);
   }

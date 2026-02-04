@@ -2256,6 +2256,190 @@ function playIntroAnimation() {
   introAnimId = requestAnimationFrame(tick);
 }
 
+// --- Push Notification Reminders ---
+const PUSH_BACKEND_URL = 'https://us-central1-silentsands.cloudfunctions.net';   // Set after deploying Cloud Functions
+const VAPID_PUBLIC_KEY = 'BOoRdpCM3WDJlYtykzzNd86i_0mhh5xHPmCBM0GJVY2mQF1-XdJEFCQ8DydZN6kEWM37fHt4hUBwqSkWQbZdfd0';   // Set after generating VAPID keys
+
+function urlBase64ToUint8Array(base64String) {
+  const padding = '='.repeat((4 - base64String.length % 4) % 4);
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const raw = atob(base64);
+  const arr = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i++) arr[i] = raw.charCodeAt(i);
+  return arr;
+}
+
+async function registerServiceWorker() {
+  if (!('serviceWorker' in navigator)) return null;
+  try {
+    return await navigator.serviceWorker.register('/sw.js');
+  } catch (_) {
+    return null;
+  }
+}
+
+async function subscribeToPush(time) {
+  const reg = await navigator.serviceWorker.ready;
+  const permission = await Notification.requestPermission();
+  if (permission !== 'granted') return null;
+
+  const subscription = await reg.pushManager.subscribe({
+    userVisibleOnly: true,
+    applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
+  });
+
+  const existingId = localStorage.getItem('ssReminderId');
+  const body = {
+    subscription: subscription.toJSON(),
+    reminderTime: time,
+    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+  };
+  if (existingId) body.id = existingId;
+
+  const res = await fetch(PUSH_BACKEND_URL + '/subscribe', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const data = await res.json();
+  if (data.id) localStorage.setItem('ssReminderId', data.id);
+  return data.id;
+}
+
+async function unsubscribeFromPush() {
+  const reg = await navigator.serviceWorker.ready;
+  const sub = await reg.pushManager.getSubscription();
+  if (sub) await sub.unsubscribe();
+
+  const docId = localStorage.getItem('ssReminderId');
+  if (docId && PUSH_BACKEND_URL) {
+    fetch(PUSH_BACKEND_URL + '/unsubscribe', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: docId }),
+    }).catch(() => {});
+  }
+  localStorage.removeItem('ssReminderId');
+}
+
+async function updateReminderTime(time) {
+  const docId = localStorage.getItem('ssReminderId');
+  if (!docId || !PUSH_BACKEND_URL) return;
+
+  const reg = await navigator.serviceWorker.ready;
+  const sub = await reg.pushManager.getSubscription();
+  if (!sub) return;
+
+  fetch(PUSH_BACKEND_URL + '/subscribe', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      id: docId,
+      subscription: sub.toJSON(),
+      reminderTime: time,
+      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    }),
+  }).catch(() => {});
+}
+
+function formatTime12h(time24) {
+  const [h, m] = time24.split(':').map(Number);
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  const h12 = h % 12 || 12;
+  return h12 + ':' + String(m).padStart(2, '0') + ' ' + ampm;
+}
+
+function initRemindersTab() {
+  const toggle = document.getElementById('reminderToggle');
+  const timePicker = document.getElementById('reminderTime');
+  const status = document.getElementById('reminderStatus');
+  const iosNote = document.getElementById('reminderIosNote');
+  const unsupported = document.getElementById('reminderUnsupported');
+
+  if (!toggle) return;
+
+  const pushSupported = 'serviceWorker' in navigator && 'PushManager' in window && VAPID_PUBLIC_KEY;
+
+  // iOS standalone hint
+  const isIos = /iPad|iPhone|iPod/.test(navigator.userAgent);
+  if (isIos && iosNote) iosNote.style.display = '';
+
+  if (!pushSupported) {
+    toggle.disabled = true;
+    timePicker.disabled = true;
+    if (unsupported) unsupported.style.display = '';
+    status.textContent = '';
+    return;
+  }
+
+  // Restore state
+  const savedEnabled = localStorage.getItem('ssReminderEnabled') === 'true';
+  const savedTime = localStorage.getItem('ssReminderTime') || '15:00';
+  timePicker.value = savedTime;
+
+  if (savedEnabled) {
+    // Verify subscription still exists
+    navigator.serviceWorker.ready.then((reg) =>
+      reg.pushManager.getSubscription()
+    ).then((sub) => {
+      if (sub && localStorage.getItem('ssReminderId')) {
+        toggle.checked = true;
+        timePicker.disabled = false;
+        status.textContent = 'Reminders on for ' + formatTime12h(savedTime);
+      } else {
+        // Subscription lost, re-subscribe silently
+        subscribeToPush(savedTime).then((id) => {
+          if (id) {
+            toggle.checked = true;
+            timePicker.disabled = false;
+            status.textContent = 'Reminders on for ' + formatTime12h(savedTime);
+          } else {
+            localStorage.setItem('ssReminderEnabled', 'false');
+          }
+        }).catch(() => {
+          localStorage.setItem('ssReminderEnabled', 'false');
+        });
+      }
+    });
+  }
+
+  toggle.addEventListener('change', async () => {
+    if (toggle.checked) {
+      try {
+        const id = await subscribeToPush(timePicker.value);
+        if (id) {
+          timePicker.disabled = false;
+          localStorage.setItem('ssReminderEnabled', 'true');
+          localStorage.setItem('ssReminderTime', timePicker.value);
+          status.textContent = 'Reminders on for ' + formatTime12h(timePicker.value);
+        } else {
+          toggle.checked = false;
+          status.textContent = 'Permission denied — enable in browser settings';
+        }
+      } catch (err) {
+        console.error('Reminder subscribe failed:', err);
+        toggle.checked = false;
+        status.textContent = 'Could not enable reminders';
+      }
+    } else {
+      await unsubscribeFromPush();
+      timePicker.disabled = true;
+      localStorage.setItem('ssReminderEnabled', 'false');
+      status.textContent = 'Reminders disabled';
+    }
+  });
+
+  let timeDebounce = null;
+  timePicker.addEventListener('change', () => {
+    clearTimeout(timeDebounce);
+    timeDebounce = setTimeout(() => {
+      localStorage.setItem('ssReminderTime', timePicker.value);
+      updateReminderTime(timePicker.value);
+      status.textContent = 'Reminders on for ' + formatTime12h(timePicker.value);
+    }, 500);
+  });
+}
+
 // --- Init ---
 setupSliders();
 loadSettings();
@@ -2266,3 +2450,4 @@ initGarden(
 rebuildGaussKernel();
 clearSand();
 playIntroAnimation();
+registerServiceWorker().then(() => initRemindersTab());
