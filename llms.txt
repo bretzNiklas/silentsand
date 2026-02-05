@@ -1,0 +1,37 @@
+# Silent Sand
+
+> A free browser-based zen garden simulator for mindfulness and relaxation.
+
+## What is Silent Sand?
+
+Silent Sand (silentsand.me) is a virtual Japanese rock garden where you rake sand patterns using your mouse or touchscreen. It's a digital mindfulness tool designed for stress relief and creative relaxation.
+
+## Features
+
+- **Sand Raking**: Draw with a customizable multi-tine rake to create realistic grooved patterns
+- **Symmetry Modes**: Mirror your strokes vertically, horizontally, or diagonally for kaleidoscope effects
+- **"To the Core" Mode**: Dig through geological layers (clay, loam, limestone, slate, obsidian) to uncover a hidden daily zen quote
+- **Guide Images**: Upload reference images to trace patterns
+- **Save System**: Save and load your garden designs locally
+- **Daily Reminders**: Set browser notifications for mindful breaks
+
+## How to Use
+
+1. Visit silentsand.me in any modern browser
+2. Click and drag on the sand to rake patterns
+3. Use the scroll wheel to rotate your rake angle
+4. Adjust rake settings (tine count, gap, size) in the Rake tab
+5. Enable symmetry modes for mandala-style designs
+6. Try "To the Core" mode for a meditative digging experience
+
+## Technical Details
+
+- Works on desktop and mobile browsers
+- No account required
+- No downloads or installations
+- Runs entirely in the browser using HTML5 Canvas
+- Settings and saves stored locally in your browser
+
+## Contact
+
+Website: https://silentsand.me
