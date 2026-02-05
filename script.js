@@ -1002,11 +1002,15 @@ function updateDepthPill() {
       updateLeaderboardSubmitBtn();
     }
   } else {
-    let cleared = 0;
+    // Progressive percentage: each pixel contributes based on depth
+    // 2.0 = surface (0%), 0.1 = floor (100%)
+    let totalProgress = 0;
     for (let i = 0; i < totalPixels; i++) {
-      if (sandHeight[i] <= 0.15) cleared++;
+      const h = sandHeight[i];
+      const progress = Math.max(0, Math.min(1, (2.0 - h) / 1.9));
+      totalProgress += progress;
     }
-    const clearedPct = (cleared / totalPixels * 100);
+    const clearedPct = (totalProgress / totalPixels * 100);
     clearedFill.style.height = clearedPct + '%';
     depthPillText.textContent = clearedPct.toFixed(1) + '%';
   }
@@ -1509,12 +1513,14 @@ async function submitLeaderboardScore() {
   const nickname = leaderboardNickname.value.trim();
   if (nickname.length < 2 || !reachedBottom) return;
 
-  // Calculate current floor exposed percentage
-  let cleared = 0;
+  // Calculate progressive percentage (surface to floor)
+  let totalProgress = 0;
   for (let i = 0; i < totalPixels; i++) {
-    if (sandHeight[i] <= 0.15) cleared++;
+    const h = sandHeight[i];
+    const progress = Math.max(0, Math.min(1, (2.0 - h) / 1.9));
+    totalProgress += progress;
   }
-  const score = Math.round(cleared / totalPixels * 10000) / 100;
+  const score = Math.round(totalProgress / totalPixels * 10000) / 100;
 
   // Optimistic UI - show success immediately
   leaderboardSubmitBtn.disabled = true;
