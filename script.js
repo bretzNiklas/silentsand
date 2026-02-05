@@ -199,6 +199,8 @@ document.addEventListener('keyup', (e) => {
 });
 window.addEventListener('blur', () => heldKeys.clear());
 
+const isMobile = window.matchMedia('(max-width: 768px)').matches;
+
 // --- Cached slider values (optimization #3) ---
 const cached = {};
 
@@ -990,7 +992,7 @@ function updateDepthPill() {
   if (!reachedBottom) {
     const raw = (2.0 - deepestHeight) / 1.99 * 100;
     const pct = 4 + raw * 0.99;
-    depthMarker.style.top = pct + '%';
+    if (isMobile) { depthMarker.style.left = pct + '%'; } else { depthMarker.style.top = pct + '%'; }
     if (deepestHeight <= 0.1) {
       reachedBottom = true;
       depthBar.style.opacity = '0';
@@ -1011,7 +1013,7 @@ function updateDepthPill() {
       totalProgress += progress;
     }
     const clearedPct = (totalProgress / totalPixels * 100);
-    clearedFill.style.height = clearedPct + '%';
+    if (isMobile) { clearedFill.style.width = clearedPct + '%'; } else { clearedFill.style.height = clearedPct + '%'; }
     depthPillText.textContent = clearedPct.toFixed(1) + '%';
   }
 }
@@ -1582,6 +1584,7 @@ function enterDiggingMode() {
   clearBtn.parentElement.style.display = 'none';
   settingsPanel.style.display = 'none';
   document.getElementById('coreDesc').style.display = '';
+  if (isMobile) leaderboardPanel.style.display = '';
 
   // Reset depth tracking and show pill
   deepestHeight = 2.0;
@@ -1647,6 +1650,7 @@ function exitDiggingMode() {
   clearBtn.parentElement.style.display = 'flex';
   settingsPanel.style.display = '';
   document.getElementById('coreDesc').style.display = 'none';
+  if (isMobile) leaderboardPanel.style.display = 'none';
 
   // Sync mode selector buttons
   document.querySelectorAll('.mode-btn').forEach(b => {
@@ -1663,6 +1667,44 @@ settingsBtn.addEventListener('click', () => {
   settingsBtn.classList.toggle('active', !open);
   settingsBtn.textContent = open ? '\u25B2 Options' : '\u25BC Options';
 });
+
+// --- Mobile: latch, backdrop dismiss, tap tooltips ---
+if (isMobile) {
+  // Insert latch at top of settings panel
+  const latch = document.createElement('div');
+  latch.className = 'bottom-sheet-latch';
+  latch.innerHTML = '<span class="latch-arrow">\u25B2</span> Options';
+  settingsPanel.prepend(latch);
+
+  // Start collapsed
+  settingsPanel.classList.add('collapsed');
+
+  const backdrop = document.getElementById('bottomSheetBackdrop');
+
+  function toggleSheet() {
+    const isOpen = !settingsPanel.classList.contains('collapsed');
+    settingsPanel.classList.toggle('collapsed', isOpen);
+    backdrop.classList.toggle('active', !isOpen);
+  }
+
+  latch.addEventListener('click', toggleSheet);
+
+  backdrop.addEventListener('click', () => {
+    settingsPanel.classList.add('collapsed');
+    backdrop.classList.remove('active');
+  });
+
+  document.addEventListener('click', (e) => {
+    const infoI = e.target.closest('.info-i');
+    document.querySelectorAll('.info-tip.show').forEach(tip => {
+      if (!infoI || tip !== infoI.querySelector('.info-tip')) tip.classList.remove('show');
+    });
+    if (infoI) {
+      const tip = infoI.querySelector('.info-tip');
+      if (tip) tip.classList.toggle('show');
+    }
+  });
+}
 
 // --- Mode Selector ---
 document.querySelector('.mode-selector').addEventListener('click', (e) => {
@@ -2587,13 +2629,13 @@ function initRemindersTab() {
 setupSliders();
 loadSettings();
 initGarden(
-  Math.min(1120, window.innerWidth - 40),
-  Math.min(630, window.innerHeight - 120)
+  Math.min(1120, isMobile ? window.innerWidth : window.innerWidth - 40),
+  Math.min(630, isMobile ? Math.floor(window.innerHeight * 0.65) : window.innerHeight - 120)
 );
 rebuildGaussKernel();
 clearSand();
 playIntroAnimation();
-registerServiceWorker().then(() => initRemindersTab());
+registerServiceWorker().then(() => { if (!isMobile) initRemindersTab(); });
 
 // --- Leaderboard Init ---
 leaderboardPlayerId = localStorage.getItem('ssCorePlayerId');
