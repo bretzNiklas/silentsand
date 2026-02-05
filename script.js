@@ -1491,8 +1491,9 @@ function renderLeaderboardList() {
   for (let i = 0; i < 10; i++) {
     const entry = leaderboardEntries[i];
     if (entry) {
+      const isOwn = entry.playerId === leaderboardPlayerId;
       html += `
-        <div class="leaderboard-entry">
+        <div class="leaderboard-entry${isOwn ? ' leaderboard-entry-own' : ''}">
           <span class="leaderboard-rank">${entry.rank}.</span>
           <span class="leaderboard-name" title="${escapeHtml(entry.nickname)}">${escapeHtml(entry.nickname)}</span>
           <span class="leaderboard-score">${entry.score.toFixed(1)}%</span>

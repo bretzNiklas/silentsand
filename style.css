@@ -568,6 +568,16 @@
   .leaderboard-entry:last-child {
     border-bottom: none;
   }
+  .leaderboard-entry-own {
+    color: #e8d5b7;
+    background: #5a4a3533;
+    margin: 0 -6px;
+    padding: 4px 6px;
+    border-radius: 4px;
+  }
+  .leaderboard-entry-own .leaderboard-rank {
+    color: #c2a67d;
+  }
   .leaderboard-rank {
     color: #5a4a35;
     font-size: 10px;
