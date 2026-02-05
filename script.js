@@ -996,7 +996,8 @@ function updateDepthPill() {
       depthBar.style.display = 'none';
       clearedBar.style.display = '';
       depthPillText.textContent = '0%';
-      // Show leaderboard submit section
+      // Show leaderboard submit section, hide hint
+      leaderboardHint.style.display = 'none';
       leaderboardSubmit.style.display = '';
       updateLeaderboardSubmitBtn();
     }
@@ -1458,6 +1459,7 @@ const settingsPanel = document.getElementById('settingsPanel');
 // --- Leaderboard Functions ---
 const leaderboardPanel = document.getElementById('leaderboardPanel');
 const leaderboardList = document.getElementById('leaderboardList');
+const leaderboardHint = document.getElementById('leaderboardHint');
 const leaderboardSubmit = document.getElementById('leaderboardSubmit');
 const leaderboardNickname = document.getElementById('leaderboardNickname');
 const leaderboardSubmitBtn = document.getElementById('leaderboardSubmitBtn');
@@ -1471,7 +1473,7 @@ function escapeHtml(str) {
 
 async function fetchLeaderboard() {
   try {
-    const res = await fetch(`${LEADERBOARD_API}/getLeaderboard`);
+    const res = await fetch(`${LEADERBOARD_API}/getLeaderboard?limit=10`);
     const data = await res.json();
     leaderboardEntries = data.entries || [];
     renderLeaderboardList();
@@ -1481,17 +1483,26 @@ async function fetchLeaderboard() {
 }
 
 function renderLeaderboardList() {
-  if (leaderboardEntries.length === 0) {
-    leaderboardList.innerHTML = '<div class="leaderboard-empty">No scores yet</div>';
-    return;
+  let html = '';
+  for (let i = 0; i < 10; i++) {
+    const entry = leaderboardEntries[i];
+    if (entry) {
+      html += `
+        <div class="leaderboard-entry">
+          <span class="leaderboard-rank">${entry.rank}.</span>
+          <span class="leaderboard-name">${escapeHtml(entry.nickname)}</span>
+          <span class="leaderboard-score">${entry.score.toFixed(1)}%</span>
+        </div>`;
+    } else {
+      html += `
+        <div class="leaderboard-entry leaderboard-entry-empty">
+          <span class="leaderboard-rank">${i + 1}.</span>
+          <span class="leaderboard-name">—</span>
+          <span class="leaderboard-score">0%</span>
+        </div>`;
+    }
   }
-  leaderboardList.innerHTML = leaderboardEntries.map(e => `
-    <div class="leaderboard-entry">
-      <span class="leaderboard-rank">${e.rank}.</span>
-      <span class="leaderboard-name">${escapeHtml(e.nickname)}</span>
-      <span class="leaderboard-score">${e.score.toFixed(1)}%</span>
-    </div>
-  `).join('');
+  leaderboardList.innerHTML = html;
 }
 
 async function submitLeaderboardScore() {
@@ -1573,11 +1584,10 @@ function enterDiggingMode() {
   depthPill.style.display = 'flex';
   updateDepthPill();
 
-  // Show leaderboard panel
-  leaderboardPanel.style.display = 'flex';
+  // Reset leaderboard for new dig session - show hint, hide submit
+  leaderboardHint.style.display = '';
   leaderboardSubmit.style.display = 'none';
   leaderboardStatus.textContent = '';
-  leaderboardNickname.value = localStorage.getItem('ssCoreNickname') || '';
   fetchLeaderboard();
 
   buildQuotePixels();
@@ -1608,7 +1618,8 @@ function exitDiggingMode() {
 
   diggingMode = false;
   depthPill.style.display = 'none';
-  leaderboardPanel.style.display = 'none';
+  leaderboardHint.style.display = 'none';
+  leaderboardSubmit.style.display = 'none';
   // Clear undo/redo from digging session
   undoStack.length = 0;
   redoStack.length = 0;
@@ -2568,5 +2579,7 @@ if (!leaderboardPlayerId) {
   leaderboardPlayerId = crypto.randomUUID();
   localStorage.setItem('ssCorePlayerId', leaderboardPlayerId);
 }
+leaderboardNickname.value = localStorage.getItem('ssCoreNickname') || '';
 leaderboardSubmitBtn.addEventListener('click', submitLeaderboardScore);
 leaderboardNickname.addEventListener('input', updateLeaderboardSubmitBtn);
+fetchLeaderboard();
