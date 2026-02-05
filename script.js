@@ -12,6 +12,11 @@ let quotePixels = null;        // Uint8Array bitmask: 1 = text pixel
 let deepestHeight = 2.0;      // tracks minimum sandHeight during dig session
 // (dig mode uses subtractive carving — no accumulator needed)
 
+// --- Leaderboard State ---
+let leaderboardEntries = [];
+let leaderboardPlayerId = null;
+const LEADERBOARD_API = 'https://us-central1-silentsands.cloudfunctions.net';
+
 // Fixed rake settings for digging mode
 const DIG_RAKE_SETTINGS = {
   tineRadius: 8,
@@ -991,6 +996,9 @@ function updateDepthPill() {
       depthBar.style.display = 'none';
       clearedBar.style.display = '';
       depthPillText.textContent = '0%';
+      // Show leaderboard submit section
+      leaderboardSubmit.style.display = '';
+      updateLeaderboardSubmitBtn();
     }
   } else {
     let cleared = 0;
@@ -1447,6 +1455,92 @@ function applySliderValues(values) {
 const settingsBtn = document.getElementById('settingsBtn');
 const settingsPanel = document.getElementById('settingsPanel');
 
+// --- Leaderboard Functions ---
+const leaderboardPanel = document.getElementById('leaderboardPanel');
+const leaderboardList = document.getElementById('leaderboardList');
+const leaderboardSubmit = document.getElementById('leaderboardSubmit');
+const leaderboardNickname = document.getElementById('leaderboardNickname');
+const leaderboardSubmitBtn = document.getElementById('leaderboardSubmitBtn');
+const leaderboardStatus = document.getElementById('leaderboardStatus');
+
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+async function fetchLeaderboard() {
+  try {
+    const res = await fetch(`${LEADERBOARD_API}/getLeaderboard`);
+    const data = await res.json();
+    leaderboardEntries = data.entries || [];
+    renderLeaderboardList();
+  } catch (err) {
+    console.error('Failed to fetch leaderboard:', err);
+  }
+}
+
+function renderLeaderboardList() {
+  if (leaderboardEntries.length === 0) {
+    leaderboardList.innerHTML = '<div class="leaderboard-empty">No scores yet</div>';
+    return;
+  }
+  leaderboardList.innerHTML = leaderboardEntries.map(e => `
+    <div class="leaderboard-entry">
+      <span class="leaderboard-rank">${e.rank}.</span>
+      <span class="leaderboard-name">${escapeHtml(e.nickname)}</span>
+      <span class="leaderboard-score">${e.score.toFixed(1)}%</span>
+    </div>
+  `).join('');
+}
+
+async function submitLeaderboardScore() {
+  const nickname = leaderboardNickname.value.trim();
+  if (nickname.length < 2 || !reachedBottom) return;
+
+  // Calculate current cleared percentage
+  let cleared = 0;
+  for (let i = 0; i < totalPixels; i++) {
+    if (sandHeight[i] < 1.95) cleared++;
+  }
+  const score = Math.round(cleared / totalPixels * 10000) / 100;
+
+  leaderboardSubmitBtn.disabled = true;
+  leaderboardStatus.textContent = 'Submitting...';
+
+  try {
+    const res = await fetch(`${LEADERBOARD_API}/submitScore`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        playerId: leaderboardPlayerId,
+        nickname,
+        score,
+      }),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      leaderboardStatus.textContent = `Rank #${data.rank} (${data.score.toFixed(1)}%)`;
+      localStorage.setItem('ssCoreNickname', nickname);
+      fetchLeaderboard();
+    } else {
+      leaderboardStatus.textContent = data.error || 'Failed to submit';
+    }
+  } catch (err) {
+    console.error('Failed to submit score:', err);
+    leaderboardStatus.textContent = 'Network error';
+  }
+
+  // Re-enable after 3 seconds
+  setTimeout(() => {
+    leaderboardSubmitBtn.disabled = !reachedBottom || leaderboardNickname.value.trim().length < 2;
+  }, 3000);
+}
+
+function updateLeaderboardSubmitBtn() {
+  leaderboardSubmitBtn.disabled = !reachedBottom || leaderboardNickname.value.trim().length < 2;
+}
+
 function enterDiggingMode() {
   savedGardenState = getCurrentState();
   undoStack.length = 0;
@@ -1479,6 +1573,13 @@ function enterDiggingMode() {
   depthPill.style.display = 'flex';
   updateDepthPill();
 
+  // Show leaderboard panel
+  leaderboardPanel.style.display = 'flex';
+  leaderboardSubmit.style.display = 'none';
+  leaderboardStatus.textContent = '';
+  leaderboardNickname.value = localStorage.getItem('ssCoreNickname') || '';
+  fetchLeaderboard();
+
   buildQuotePixels();
 
   // Fill sand to normal height
@@ -1507,6 +1608,7 @@ function exitDiggingMode() {
 
   diggingMode = false;
   depthPill.style.display = 'none';
+  leaderboardPanel.style.display = 'none';
   // Clear undo/redo from digging session
   undoStack.length = 0;
   redoStack.length = 0;
@@ -2459,3 +2561,12 @@ rebuildGaussKernel();
 clearSand();
 playIntroAnimation();
 registerServiceWorker().then(() => initRemindersTab());
+
+// --- Leaderboard Init ---
+leaderboardPlayerId = localStorage.getItem('ssCorePlayerId');
+if (!leaderboardPlayerId) {
+  leaderboardPlayerId = crypto.randomUUID();
+  localStorage.setItem('ssCorePlayerId', leaderboardPlayerId);
+}
+leaderboardSubmitBtn.addEventListener('click', submitLeaderboardScore);
+leaderboardNickname.addEventListener('input', updateLeaderboardSubmitBtn);

@@ -492,3 +492,116 @@
   input[type="time"]::-webkit-calendar-picker-indicator {
     filter: invert(0.7) sepia(0.5) hue-rotate(350deg);
   }
+
+  /* Leaderboard panel (right of canvas, during Core mode) */
+  .leaderboard-panel {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    right: -280px;
+    width: 220px;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 14px 14px;
+    background: #1a1a1a;
+    border: 1px solid #5a4a3544;
+    border-radius: 6px;
+  }
+  .leaderboard-title {
+    color: #5a4a35;
+    font-size: 9px;
+    font-weight: 600;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+  }
+  .leaderboard-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    max-height: 320px;
+    overflow-y: auto;
+  }
+  .leaderboard-empty {
+    color: #5a4a3577;
+    font-size: 11px;
+    text-align: center;
+    padding: 12px 0;
+  }
+  .leaderboard-entry {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    color: #c2a67d;
+    padding: 4px 0;
+    border-bottom: 1px solid #5a4a3522;
+  }
+  .leaderboard-entry:last-child {
+    border-bottom: none;
+  }
+  .leaderboard-rank {
+    color: #5a4a35;
+    font-size: 10px;
+    min-width: 16px;
+  }
+  .leaderboard-name {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .leaderboard-score {
+    color: #e8d5b7;
+    font-size: 10px;
+    font-weight: 600;
+  }
+  .leaderboard-submit {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding-top: 10px;
+    border-top: 1px solid #5a4a3544;
+  }
+  .leaderboard-submit input[type="text"] {
+    background: #2a2218;
+    border: 1px solid #5a4a35;
+    color: #c2a67d;
+    padding: 6px 10px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-family: inherit;
+    letter-spacing: 0.03em;
+    outline: none;
+  }
+  .leaderboard-submit input[type="text"]::placeholder {
+    color: #5a4a3588;
+  }
+  .leaderboard-submit button {
+    background: #2a2218;
+    border: 1px solid #5a4a35;
+    color: #c2a67d;
+    padding: 6px 12px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-family: inherit;
+    letter-spacing: 0.05em;
+    cursor: pointer;
+    transition: background 0.2s, border-color 0.2s;
+  }
+  .leaderboard-submit button:hover:not(:disabled) {
+    background: #3a3228;
+    border-color: #c2a67d;
+  }
+  .leaderboard-submit button:disabled {
+    opacity: 0.4;
+    cursor: default;
+  }
+  .leaderboard-status {
+    color: #5a4a35;
+    font-size: 10px;
+    letter-spacing: 0.05em;
+    line-height: 1.3;
+    text-align: center;
+  }
