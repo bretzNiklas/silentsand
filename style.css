@@ -549,6 +549,9 @@
     gap: 4px;
     max-height: 320px;
     overflow-y: auto;
+    overflow-x: hidden;
+    margin: 0 -6px;
+    padding: 0 6px;
   }
   .leaderboard-empty {
     color: #5a4a3577;
