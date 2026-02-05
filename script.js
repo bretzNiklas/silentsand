@@ -995,7 +995,7 @@ function updateDepthPill() {
       reachedBottom = true;
       depthBar.style.opacity = '0';
       clearedBar.style.opacity = '1';
-      depthPillText.textContent = '0%';
+      depthPillText.textContent = '0.0%';
       // Show leaderboard submit section, hide hint
       leaderboardHint.style.display = 'none';
       leaderboardSubmit.style.display = '';
@@ -1008,7 +1008,7 @@ function updateDepthPill() {
     }
     const clearedPct = (cleared / totalPixels * 100);
     clearedFill.style.height = clearedPct + '%';
-    depthPillText.textContent = Math.round(clearedPct) + '%';
+    depthPillText.textContent = clearedPct.toFixed(1) + '%';
   }
 }
 
