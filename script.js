@@ -2604,3 +2604,4 @@ leaderboardNickname.value = localStorage.getItem('ssCoreNickname') || '';
 leaderboardSubmitBtn.addEventListener('click', submitLeaderboardScore);
 leaderboardNickname.addEventListener('input', updateLeaderboardSubmitBtn);
 fetchLeaderboard();
+setInterval(fetchLeaderboard, 30000);
