@@ -981,7 +981,7 @@ let lastFps = 0;
 // --- Depth pill ---
 const depthPill = document.getElementById('depthPill');
 const depthMarker = document.getElementById('depthMarker');
-const depthBar = document.querySelector('.depth-pill-bar');
+const depthBar = document.getElementById('depthBar');
 const clearedBar = document.getElementById('clearedBar');
 const clearedFill = document.getElementById('clearedFill');
 const depthPillText = document.getElementById('depthPillText');
@@ -993,8 +993,8 @@ function updateDepthPill() {
     depthMarker.style.top = pct + '%';
     if (deepestHeight <= 0.1) {
       reachedBottom = true;
-      depthBar.style.display = 'none';
-      clearedBar.style.display = '';
+      depthBar.style.opacity = '0';
+      clearedBar.style.opacity = '1';
       depthPillText.textContent = '0%';
       // Show leaderboard submit section, hide hint
       leaderboardHint.style.display = 'none';
@@ -1578,8 +1578,9 @@ function enterDiggingMode() {
   // Reset depth tracking and show pill
   deepestHeight = 2.0;
   reachedBottom = false;
-  depthBar.style.display = '';
-  clearedBar.style.display = 'none';
+  depthBar.style.opacity = '1';
+  clearedBar.style.opacity = '0';
+  clearedFill.style.height = '0%';
   depthPillText.textContent = 'Depth';
   depthPill.style.display = 'flex';
   updateDepthPill();

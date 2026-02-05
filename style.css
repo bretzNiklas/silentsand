@@ -364,10 +364,19 @@
     letter-spacing: 0.1em;
     text-transform: uppercase;
     white-space: nowrap;
+    min-width: 32px;
+    text-align: center;
   }
-  .depth-pill-bar {
+  .depth-pill-bars {
     position: relative;
     width: 12px;
+    flex: 1;
+  }
+  .depth-pill-bar {
+    position: absolute;
+    top: 0;
+    width: 12px;
+    height: 100%;
     border-radius: 999px;
     background: linear-gradient(to bottom,
       rgb(225, 210, 185) 0%,
@@ -379,7 +388,7 @@
     );
     background-color: rgb(35, 30, 40);
     overflow: visible;
-    flex: 1;
+    transition: opacity 0.4s ease-out;
   }
   .depth-pill-marker {
     position: absolute;
@@ -406,12 +415,15 @@
     border-left: 4px solid #e8d5b7;
   }
   .cleared-pill-bar {
-    position: relative;
+    position: absolute;
+    top: 0;
     width: 12px;
-    flex: 1;
+    height: 100%;
     border-radius: 999px;
     background: #2a2218;
     overflow: hidden;
+    opacity: 0;
+    transition: opacity 0.4s ease-out;
   }
   .cleared-pill-fill {
     position: absolute;
