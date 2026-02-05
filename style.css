@@ -51,6 +51,20 @@
     color: #e8d5b7;
     background: #5a4a35;
   }
+  .pulse-dot {
+    display: inline-block;
+    width: 5px;
+    height: 5px;
+    background: #b35a5a;
+    border-radius: 50%;
+    margin-left: 4px;
+    vertical-align: middle;
+    animation: pulse-dot 2s ease-in-out infinite;
+  }
+  @keyframes pulse-dot {
+    0%, 100% { opacity: 0.4; transform: scale(1); }
+    50% { opacity: 0.8; transform: scale(1.2); }
+  }
 
   canvas {
     display: block;
@@ -439,8 +453,9 @@
   /* Reminder box (left of canvas) */
   .reminder-box {
     position: absolute;
-    top: 0;
-    left: -176px;
+    top: 50%;
+    transform: translateY(-50%);
+    left: -220px;
     width: 160px;
     flex-shrink: 0;
     display: flex;

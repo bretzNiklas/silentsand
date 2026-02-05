@@ -1004,7 +1004,7 @@ function updateDepthPill() {
   } else {
     let cleared = 0;
     for (let i = 0; i < totalPixels; i++) {
-      if (sandHeight[i] < 1.95) cleared++;
+      if (sandHeight[i] <= 0.15) cleared++;
     }
     const clearedPct = (cleared / totalPixels * 100);
     clearedFill.style.height = clearedPct + '%';
@@ -1490,7 +1490,7 @@ function renderLeaderboardList() {
       html += `
         <div class="leaderboard-entry">
           <span class="leaderboard-rank">${entry.rank}.</span>
-          <span class="leaderboard-name">${escapeHtml(entry.nickname)}</span>
+          <span class="leaderboard-name" title="${escapeHtml(entry.nickname)}">${escapeHtml(entry.nickname)}</span>
           <span class="leaderboard-score">${entry.score.toFixed(1)}%</span>
         </div>`;
     } else {
@@ -1509,38 +1509,39 @@ async function submitLeaderboardScore() {
   const nickname = leaderboardNickname.value.trim();
   if (nickname.length < 2 || !reachedBottom) return;
 
-  // Calculate current cleared percentage
+  // Calculate current floor exposed percentage
   let cleared = 0;
   for (let i = 0; i < totalPixels; i++) {
-    if (sandHeight[i] < 1.95) cleared++;
+    if (sandHeight[i] <= 0.15) cleared++;
   }
   const score = Math.round(cleared / totalPixels * 10000) / 100;
 
+  // Optimistic UI - show success immediately
   leaderboardSubmitBtn.disabled = true;
-  leaderboardStatus.textContent = 'Submitting...';
+  leaderboardStatus.textContent = `Submitted ${score.toFixed(1)}%`;
+  localStorage.setItem('ssCoreNickname', nickname);
 
-  try {
-    const res = await fetch(`${LEADERBOARD_API}/submitScore`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        playerId: leaderboardPlayerId,
-        nickname,
-        score,
-      }),
-    });
-    const data = await res.json();
+  // Submit in background
+  fetch(`${LEADERBOARD_API}/submitScore`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      playerId: leaderboardPlayerId,
+      nickname,
+      score,
+    }),
+  }).then(res => res.json()).then(data => {
     if (data.ok) {
-      leaderboardStatus.textContent = `Rank #${data.rank} (${data.score.toFixed(1)}%)`;
-      localStorage.setItem('ssCoreNickname', nickname);
+      leaderboardStatus.textContent = `Rank #${data.rank}`;
       fetchLeaderboard();
     } else {
-      leaderboardStatus.textContent = data.error || 'Failed to submit';
+      leaderboardStatus.textContent = data.error || 'Failed';
+      leaderboardSubmitBtn.disabled = false;
     }
-  } catch (err) {
-    console.error('Failed to submit score:', err);
+  }).catch(() => {
     leaderboardStatus.textContent = 'Network error';
-  }
+    leaderboardSubmitBtn.disabled = false;
+  });
 
   // Re-enable after 3 seconds
   setTimeout(() => {
@@ -1662,9 +1663,22 @@ document.querySelector('.mode-selector').addEventListener('click', (e) => {
   if (!btn || btn.classList.contains('active') || introPlaying) return;
   document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
-  if (btn.dataset.mode === 'core') enterDiggingMode();
-  else exitDiggingMode();
+  if (btn.dataset.mode === 'core') {
+    // Hide pulse dot permanently
+    const dot = document.querySelector('.pulse-dot');
+    if (dot) dot.style.display = 'none';
+    localStorage.setItem('ssCoreVisited', 'true');
+    enterDiggingMode();
+  } else {
+    exitDiggingMode();
+  }
 });
+
+// Hide pulse dot if already visited Core mode
+if (localStorage.getItem('ssCoreVisited')) {
+  const dot = document.querySelector('.pulse-dot');
+  if (dot) dot.style.display = 'none';
+}
 
 // --- Guide Image Overlay ---
 const guideOverlay = document.getElementById('guideOverlay');
