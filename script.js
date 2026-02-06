@@ -443,6 +443,10 @@ let mirrorV = false;  // vertical axis (left/right)
 let mirrorH = false;  // horizontal axis (top/bottom)
 let mirrorD = false;  // diagonal axes (8-way)
 let alignCenter = false; // center alignment
+let handleMode = false;
+let cachedHandleLength = 100;
+let rakeHeadX = NaN;
+let rakeHeadY = NaN;
 
 // --- Helper for alignment ---
 function getPerpAt(x, y) {
@@ -455,7 +459,45 @@ function getPerpAt(x, y) {
     }
     return [1, 0];
   }
+  if (handleMode && !isNaN(rakeHeadX)) {
+    const dx = rakeHeadX - x;
+    const dy = rakeHeadY - y;
+    const len = Math.sqrt(dx * dx + dy * dy);
+    if (len > 0.001) {
+      // Perpendicular to handle direction (rotated 90°)
+      return [-dy / len, dx / len];
+    }
+  }
   return getRakePerp();
+}
+
+function getRakePos(cx, cy) {
+  if (!handleMode) return [cx, cy];
+  if (!isNaN(rakeHeadX)) return [rakeHeadX, rakeHeadY];
+  const [perpX, perpY] = getPerpAt(cx, cy);
+  // Handle direction is 90° from perp (points "forward"/down from cursor)
+  const hx = -perpY;
+  const hy = perpX;
+  return [cx + hx * cachedHandleLength, cy + hy * cachedHandleLength];
+}
+
+function updateRakeHead(cx, cy) {
+  if (!handleMode) { rakeHeadX = NaN; rakeHeadY = NaN; return; }
+  if (isNaN(rakeHeadX)) {
+    // Initialize from current rakeAngle
+    const [perpX, perpY] = getRakePerp();
+    const hx = -perpY, hy = perpX;
+    rakeHeadX = cx + hx * cachedHandleLength;
+    rakeHeadY = cy + hy * cachedHandleLength;
+    return;
+  }
+  // Constrain: rake head stays exactly handleLength from cursor
+  const dx = rakeHeadX - cx;
+  const dy = rakeHeadY - cy;
+  const dist = Math.sqrt(dx * dx + dy * dy);
+  if (dist < 0.001) return; // cursor on top of rake head, no update
+  rakeHeadX = cx + (dx / dist) * cachedHandleLength;
+  rakeHeadY = cy + (dy / dist) * cachedHandleLength;
 }
 
 // --- Timelapse recording state ---
@@ -949,14 +991,15 @@ function getSymmetryPoints(x, y, dirX, dirY, perpX, perpY) {
 }
 
 function carveRakeSymmetric(x, y, tineRadius, dirX, dirY) {
+  const [rx, ry] = getRakePos(x, y);
   if (!mirrorV && !mirrorH && !mirrorD) {
     // Check alignment for non-symmetric case too
     const [px, py] = getPerpAt(x, y);
-    carveRake(x, y, tineRadius, dirX, dirY, px, py);
+    carveRake(rx, ry, tineRadius, dirX, dirY, px, py);
     return;
   }
   const [perpX, perpY] = getPerpAt(x, y);
-  const points = getSymmetryPoints(x, y, dirX, dirY, perpX, perpY);
+  const points = getSymmetryPoints(rx, ry, dirX, dirY, perpX, perpY);
   for (const p of points) {
     carveRake(p.x, p.y, tineRadius, p.dirX, p.dirY, p.perpX, p.perpY);
   }
@@ -1142,12 +1185,27 @@ function render() {
     const [perpX, perpY] = getPerpAt(mouseX, mouseY);
 
     function drawCursorAt(cx, cy, px, py, strokeAlpha, fillAlpha) {
+      const [rx, ry] = getRakePos(cx, cy);
+      // Draw handle line and grip dot
+      if (handleMode) {
+        ctx.strokeStyle = `rgba(80, 60, 40, ${strokeAlpha * 0.5})`;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(cx, cy);
+        ctx.lineTo(rx, ry);
+        ctx.stroke();
+        ctx.fillStyle = `rgba(80, 60, 40, ${strokeAlpha})`;
+        ctx.beginPath();
+        ctx.arc(cx, cy, 3, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      // Draw tines at rake position
       ctx.strokeStyle = `rgba(80, 60, 40, ${strokeAlpha})`;
       ctx.fillStyle = `rgba(80, 60, 40, ${fillAlpha})`;
       ctx.lineWidth = 1;
       for (const offset of offsets) {
-        const tx = cx + px * offset;
-        const ty = cy + py * offset;
+        const tx = rx + px * offset;
+        const ty = ry + py * offset;
         ctx.beginPath();
         ctx.arc(tx, ty, tineRadius, 0, Math.PI * 2);
         ctx.stroke();
@@ -1159,8 +1217,8 @@ function render() {
         const first = offsets[0];
         const last = offsets[offsets.length - 1];
         ctx.beginPath();
-        ctx.moveTo(cx + px * first, cy + py * first);
-        ctx.lineTo(cx + px * last, cy + py * last);
+        ctx.moveTo(rx + px * first, ry + py * first);
+        ctx.lineTo(rx + px * last, ry + py * last);
         ctx.stroke();
       }
     }
@@ -1213,6 +1271,7 @@ function strokeTo(x, y) {
     const t = i / steps;
     const cx = lastX + dx * t;
     const cy = lastY + dy * t;
+    updateRakeHead(cx, cy);
     carveRakeSymmetric(cx, cy, tineRadius, strokeDX, strokeDY);
   }
   carveTimeAccum += performance.now() - carveStart;
@@ -1229,8 +1288,23 @@ function markCursorDirty() {
   const [px, py] = getPerpAt(mouseX, mouseY);
 
   function markCursorAt(cx, cy, cpx, cpy) {
+    const [rx, ry] = getRakePos(cx, cy);
+    // Mark tines at rake position
     for (const offset of offsets) {
-      markDirty(cx + cpx * offset, cy + cpy * offset, tineRadius + 2);
+      markDirty(rx + cpx * offset, ry + cpy * offset, tineRadius + 2);
+    }
+    // Mark handle grip and line
+    if (handleMode) {
+      markDirty(cx, cy, 5);
+      // Mark along handle line
+      const hdx = rx - cx, hdy = ry - cy;
+      const hlen = Math.sqrt(hdx * hdx + hdy * hdy);
+      if (hlen > 0) {
+        const step = 20;
+        for (let d = 0; d <= hlen; d += step) {
+          markDirty(cx + hdx * d / hlen, cy + hdy * d / hlen, 4);
+        }
+      }
     }
   }
 
@@ -1263,6 +1337,7 @@ function onDocMouseMove(e) {
   if (onCanvas) {
     markCursorDirty();
     mouseX = x; mouseY = y;
+    updateRakeHead(x, y);
     markCursorDirty();
   }
   requestRender();
@@ -1286,6 +1361,7 @@ canvas.addEventListener('mousedown', (e) => {
   anchorX = x; anchorY = y;
   lockedAxis = null;
   strokeDX = 0; strokeDY = 0;
+  updateRakeHead(x, y);
   const carveStart = performance.now();
   carveRakeSymmetric(x, y, cached.tineRadius, 0, 0);
   carveTimeAccum += performance.now() - carveStart;
@@ -1301,6 +1377,7 @@ canvas.addEventListener('mousemove', (e) => {
   markCursorDirty();
   const [x, y] = getPos(e);
   mouseX = x; mouseY = y;
+  updateRakeHead(x, y);
   onCanvas = true;
   markCursorDirty();
   requestRender();
@@ -1324,6 +1401,7 @@ canvas.addEventListener('wheel', (e) => {
     const step = Math.PI / 8; // 22.5 degrees
     rakeAngle += dir * step;
     rakeAngle = Math.round(rakeAngle / step) * step;
+    rakeHeadX = NaN; rakeHeadY = NaN;
   }
   markCursorDirty();
   requestRender();
@@ -1353,6 +1431,7 @@ canvas.addEventListener('touchstart', (e) => {
   mouseX = x; mouseY = y;
   onCanvas = true;
   strokeDX = 0; strokeDY = 0;
+  updateRakeHead(x, y);
   const carveStart = performance.now();
   carveRakeSymmetric(x, y, cached.tineRadius, 0, 0);
   carveTimeAccum += performance.now() - carveStart;
@@ -1364,6 +1443,7 @@ canvas.addEventListener('touchmove', (e) => {
   const [x, y] = getPos(e);
   markCursorDirty();
   mouseX = x; mouseY = y;
+  updateRakeHead(x, y);
   if (drawing) {
     strokeTo(x, y);
   }
@@ -1895,6 +1975,25 @@ alignCenterToggle.addEventListener('change', () => {
   saveSettings();
 });
 
+const handleToggle = document.getElementById('handleToggle');
+const handleLengthSlider = document.getElementById('handleLength');
+const handleLengthGroup = document.getElementById('handleLengthGroup');
+
+handleToggle.addEventListener('change', () => {
+  handleMode = handleToggle.checked;
+  rakeHeadX = NaN; rakeHeadY = NaN;
+  handleLengthGroup.style.display = handleMode ? 'flex' : 'none';
+  markCursorDirty();
+  requestRender();
+  saveSettings();
+});
+handleLengthSlider.addEventListener('input', () => {
+  cachedHandleLength = Number(handleLengthSlider.value);
+  rakeHeadX = NaN; rakeHeadY = NaN;
+  markCursorDirty();
+  requestRender();
+});
+
 // --- Settings Persistence ---
 function saveSettings() {
   const settings = {};
@@ -1912,6 +2011,8 @@ function saveSettings() {
   settings.mirrorH = mirrorH;
   settings.mirrorD = mirrorD;
   settings.alignCenter = alignCenter;
+  settings.handleMode = handleMode;
+  settings.handleLength = cachedHandleLength;
   const tlModeEl = document.getElementById('tlMode');
   if (tlModeEl) settings.tlMode = tlModeEl.value;
   localStorage.setItem('zenGardenSettings', JSON.stringify(settings));
@@ -1944,6 +2045,9 @@ function loadSettings() {
     if (s.mirrorH !== undefined) { mirrorH = s.mirrorH; mirrorHBtn.classList.toggle('active', mirrorH); }
     if (s.mirrorD !== undefined) { mirrorD = s.mirrorD; mirrorDBtn.classList.toggle('active', mirrorD); }
     if (s.alignCenter !== undefined) { alignCenter = s.alignCenter; alignCenterToggle.checked = alignCenter; }
+    if (s.handleMode !== undefined) { handleMode = s.handleMode; handleToggle.checked = handleMode; handleLengthGroup.style.display = handleMode ? 'flex' : 'none'; }
+    if (s.handleLength !== undefined) { cachedHandleLength = s.handleLength; handleLengthSlider.value = cachedHandleLength; }
+    rakeHeadX = NaN; rakeHeadY = NaN;
     if (s.tlMode !== undefined) { const tlModeEl = document.getElementById('tlMode'); if (tlModeEl) tlModeEl.value = s.tlMode; }
     updateSymmetryLines();
   } catch (e) {
@@ -1966,12 +2070,16 @@ document.getElementById('resetSettingsBtn').addEventListener('click', () => {
     if (labelEl) labelEl.textContent = el.value;
     if (def.onChange) def.onChange();
   }
-  // Reset mirror/alignment
+  // Reset mirror/alignment/handle
   mirrorV = false; mirrorH = false; mirrorD = false; alignCenter = false;
+  handleMode = false; cachedHandleLength = 100; rakeHeadX = NaN; rakeHeadY = NaN;
   mirrorVBtn.classList.remove('active');
   mirrorHBtn.classList.remove('active');
   mirrorDBtn.classList.remove('active');
   alignCenterToggle.checked = false;
+  handleToggle.checked = false;
+  handleLengthSlider.value = 100;
+  handleLengthGroup.style.display = 'none';
   updateSymmetryLines();
   // Reset guide overlay
   guideToggle.checked = false;
