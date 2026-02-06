@@ -26,7 +26,7 @@ Silent Sand (silentsand.me) is a virtual Japanese rock garden where you rake san
 
 ## Technical Details
 
-- Works on desktop and mobile browsers
+- Works on desktop only
 - No account required
 - No downloads or installations
 - Runs entirely in the browser using HTML5 Canvas
