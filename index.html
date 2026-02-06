@@ -159,6 +159,24 @@
 <div id="coreDesc" style="display: none; max-width: 540px; margin: 16px auto 0; text-align: center; padding: 16px 24px; border-top: 1px solid #5a4a3544; border-bottom: 1px solid #5a4a3544;">
   <p style="color: #e8d5b7; font-size: 15px; line-height: 1.7; letter-spacing: 0.04em; margin: 0; font-weight: 300;">Dig through layers of earth to uncover a hidden daily zen quote.<br>The deeper you go, the harder the ground becomes.<br>A new quote awaits each day.</p>
 </div>
+<div id="coreShareModal" class="core-share-modal" aria-hidden="true">
+  <div class="core-share-dialog" role="dialog" aria-modal="true" aria-labelledby="coreShareTitle">
+    <button id="coreShareClose" class="core-share-close" type="button" aria-label="Close share popup">x</button>
+    <h2 id="coreShareTitle" class="core-share-title">Core Message Fully Revealed</h2>
+    <p class="core-share-subtitle">Share your current To the Core sand state.</p>
+    <div class="core-share-preview-wrap">
+      <img id="coreSharePreview" class="core-share-preview" alt="Screenshot of your To the Core sand state">
+    </div>
+    <div class="core-share-actions">
+      <button id="coreShareNativeBtn" class="core-share-btn" type="button">Share Image</button>
+      <button id="coreShareXBtn" class="core-share-btn" type="button">Share to X</button>
+      <button id="coreShareFacebookBtn" class="core-share-btn" type="button">Share to Facebook</button>
+      <button id="coreShareCopyBtn" class="core-share-btn" type="button">Copy Link</button>
+      <button id="coreShareDownloadBtn" class="core-share-btn" type="button">Download Image</button>
+    </div>
+    <div id="coreShareStatus" class="core-share-status"></div>
+  </div>
+</div>
 <div id="buttonBar" style="width: 610px; max-width: calc(100% - 40px); margin-top: 16px; display: flex; gap: 16px; align-items: center;">
   <button id="settingsBtn" class="gear-btn active" title="Settings">&#9660; Options</button>
   <button id="clearBtn" style="flex: 1;">Clear Sand</button>

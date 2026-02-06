@@ -17,6 +17,14 @@ let deepestHeight = 2.0;      // tracks minimum sandHeight during dig session
 let leaderboardEntries = [];
 let leaderboardPlayerId = null;
 const LEADERBOARD_API = 'https://us-central1-silentsands.cloudfunctions.net';
+const CORE_QUOTE_REVEAL_THRESHOLD = 0.995;
+const CORE_QUOTE_BLEND_START = 0.85;
+const CORE_QUOTE_DEPTH_RANGE = 1.89;
+const CORE_QUOTE_REVEAL_HEIGHT = 2.0 - CORE_QUOTE_BLEND_START * CORE_QUOTE_DEPTH_RANGE;
+let coreShareShown = false;
+let coreSharePending = false;
+let coreShareImageBlob = null;
+let coreShareImageUrl = '';
 
 // Fixed rake settings for digging mode
 const DIG_RAKE_SETTINGS = {
@@ -173,6 +181,11 @@ updateHistoryBtns();
 const heldKeys = new Set();
 document.addEventListener('keydown', (e) => {
   heldKeys.add(e.key.toLowerCase());
+  if (e.key === 'Escape' && coreShareModal && coreShareModal.classList.contains('open')) {
+    e.preventDefault();
+    closeCoreShareModal();
+    return;
+  }
   if (e.ctrlKey || e.metaKey) {
     const key = e.key.toLowerCase();
     if (key === 'z') {
@@ -1070,19 +1083,29 @@ function updateDepthPill() {
       leaderboardHint.style.display = 'none';
       leaderboardSubmit.style.display = '';
       updateLeaderboardSubmitBtn();
+      maybeOpenCoreShareModal();
     }
   } else {
     // Progressive percentage: each pixel contributes based on depth
     // 2.0 = surface (0%), 0.1 = floor (100%)
     let totalProgress = 0;
+    let quoteTotal = 0;
+    let quoteRevealed = 0;
     for (let i = 0; i < totalPixels; i++) {
       const h = sandHeight[i];
       const progress = Math.max(0, Math.min(1, (2.0 - h) / 1.9));
       totalProgress += progress;
+      if (quotePixels && quotePixels[i]) {
+        quoteTotal++;
+        if (h <= CORE_QUOTE_REVEAL_HEIGHT) quoteRevealed++;
+      }
     }
     const clearedPct = (totalProgress / totalPixels * 100);
     if (isMobile) { clearedFill.style.width = clearedPct + '%'; } else { clearedFill.style.height = clearedPct + '%'; }
     depthPillText.textContent = clearedPct.toFixed(1) + '%';
+    if (!coreShareShown && !coreSharePending && quoteTotal > 0) {
+      maybeOpenCoreShareModal(quoteRevealed / quoteTotal);
+    }
   }
 }
 
@@ -1579,6 +1602,204 @@ const leaderboardSubmit = document.getElementById('leaderboardSubmit');
 const leaderboardNickname = document.getElementById('leaderboardNickname');
 const leaderboardSubmitBtn = document.getElementById('leaderboardSubmitBtn');
 const leaderboardStatus = document.getElementById('leaderboardStatus');
+const coreShareModal = document.getElementById('coreShareModal');
+const coreSharePreview = document.getElementById('coreSharePreview');
+const coreShareStatus = document.getElementById('coreShareStatus');
+const coreShareCloseBtn = document.getElementById('coreShareClose');
+const coreShareNativeBtn = document.getElementById('coreShareNativeBtn');
+const coreShareXBtn = document.getElementById('coreShareXBtn');
+const coreShareFacebookBtn = document.getElementById('coreShareFacebookBtn');
+const coreShareCopyBtn = document.getElementById('coreShareCopyBtn');
+const coreShareDownloadBtn = document.getElementById('coreShareDownloadBtn');
+
+function setCoreShareStatus(message) {
+  if (coreShareStatus) coreShareStatus.textContent = message;
+}
+
+function revokeCoreShareImageUrl() {
+  if (coreShareImageUrl) {
+    URL.revokeObjectURL(coreShareImageUrl);
+    coreShareImageUrl = '';
+  }
+}
+
+function closeCoreShareModal() {
+  if (!coreShareModal) return;
+  coreShareModal.classList.remove('open');
+  coreShareModal.setAttribute('aria-hidden', 'true');
+  setCoreShareStatus('');
+}
+
+function openCoreShareModal() {
+  if (!coreShareModal) return;
+  coreShareModal.classList.add('open');
+  coreShareModal.setAttribute('aria-hidden', 'false');
+}
+
+function resetCoreShareState() {
+  coreShareShown = false;
+  coreSharePending = false;
+  coreShareImageBlob = null;
+  revokeCoreShareImageUrl();
+  if (coreSharePreview) coreSharePreview.removeAttribute('src');
+  closeCoreShareModal();
+}
+
+function getQuoteRevealRatio() {
+  if (!quotePixels) return 0;
+  let quoteTotal = 0;
+  let quoteRevealed = 0;
+  for (let i = 0; i < totalPixels; i++) {
+    if (!quotePixels[i]) continue;
+    quoteTotal++;
+    if (sandHeight[i] <= CORE_QUOTE_REVEAL_HEIGHT) quoteRevealed++;
+  }
+  return quoteTotal > 0 ? quoteRevealed / quoteTotal : 0;
+}
+
+function captureCoreShareBlob() {
+  return new Promise((resolve, reject) => {
+    canvas.toBlob((blob) => {
+      if (blob) resolve(blob);
+      else reject(new Error('Canvas snapshot failed'));
+    }, 'image/png');
+  });
+}
+
+async function maybeOpenCoreShareModal(precomputedQuoteRevealRatio = null) {
+  if (!diggingMode || coreShareShown || coreSharePending) return;
+  const quoteRevealRatio = precomputedQuoteRevealRatio === null
+    ? getQuoteRevealRatio()
+    : precomputedQuoteRevealRatio;
+  if (quoteRevealRatio < CORE_QUOTE_REVEAL_THRESHOLD) return;
+
+  coreSharePending = true;
+  setCoreShareStatus('Preparing image...');
+  try {
+    coreShareImageBlob = await captureCoreShareBlob();
+    revokeCoreShareImageUrl();
+    coreShareImageUrl = URL.createObjectURL(coreShareImageBlob);
+    if (coreSharePreview) coreSharePreview.src = coreShareImageUrl;
+    coreShareShown = true;
+    openCoreShareModal();
+    setCoreShareStatus('');
+    gtag('event', 'core_share_modal_open');
+  } catch (err) {
+    console.error('Failed to build core share image:', err);
+    setCoreShareStatus('Could not prepare image');
+  } finally {
+    coreSharePending = false;
+  }
+}
+
+function openShareUrl(url) {
+  window.open(url, '_blank', 'noopener,noreferrer');
+}
+
+async function shareCoreImage() {
+  if (!coreShareImageBlob) {
+    setCoreShareStatus('Image not ready yet');
+    return;
+  }
+  if (!navigator.share) {
+    setCoreShareStatus('Native share unavailable on this browser');
+    return;
+  }
+
+  const shareData = {
+    title: 'Silent Sand - To the Core',
+    text: 'I reached the core in Silent Sand.',
+    url: window.location.href
+  };
+  const file = new File([coreShareImageBlob], 'silent-sand-core.png', { type: 'image/png' });
+  if (navigator.canShare && navigator.canShare({ files: [file] })) {
+    shareData.files = [file];
+  }
+
+  try {
+    await navigator.share(shareData);
+    gtag('event', 'core_share_native');
+    setCoreShareStatus('Shared');
+  } catch (err) {
+    if (err && err.name !== 'AbortError') {
+      setCoreShareStatus('Share canceled or failed');
+    } else {
+      setCoreShareStatus('');
+    }
+  }
+}
+
+async function copyCoreShareLink() {
+  const url = window.location.href;
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(url);
+    } else {
+      const tmp = document.createElement('textarea');
+      tmp.value = url;
+      tmp.setAttribute('readonly', '');
+      tmp.style.position = 'fixed';
+      tmp.style.left = '-9999px';
+      document.body.appendChild(tmp);
+      tmp.select();
+      document.execCommand('copy');
+      document.body.removeChild(tmp);
+    }
+    setCoreShareStatus('Link copied');
+    gtag('event', 'core_share_copy_link');
+  } catch (_) {
+    setCoreShareStatus('Could not copy link');
+  }
+}
+
+function downloadCoreShareImage() {
+  if (!coreShareImageBlob) {
+    setCoreShareStatus('Image not ready yet');
+    return;
+  }
+  if (!coreShareImageUrl) coreShareImageUrl = URL.createObjectURL(coreShareImageBlob);
+  const a = document.createElement('a');
+  a.href = coreShareImageUrl;
+  a.download = 'silent-sand-core.png';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setCoreShareStatus('Image downloaded');
+  gtag('event', 'core_share_download');
+}
+
+if (coreShareModal) {
+  coreShareCloseBtn.addEventListener('click', () => {
+    closeCoreShareModal();
+    gtag('event', 'core_share_modal_close');
+  });
+  coreShareModal.addEventListener('click', (e) => {
+    if (e.target === coreShareModal) {
+      closeCoreShareModal();
+      gtag('event', 'core_share_modal_close');
+    }
+  });
+  coreShareNativeBtn.addEventListener('click', shareCoreImage);
+  coreShareXBtn.addEventListener('click', () => {
+    const text = encodeURIComponent('I reached the core in Silent Sand.');
+    const url = encodeURIComponent(window.location.href);
+    openShareUrl(`https://twitter.com/intent/tweet?text=${text}&url=${url}`);
+    setCoreShareStatus('Opened X share. Attach the downloaded image manually.');
+    gtag('event', 'core_share_x');
+  });
+  coreShareFacebookBtn.addEventListener('click', () => {
+    const url = encodeURIComponent(window.location.href);
+    openShareUrl(`https://www.facebook.com/sharer/sharer.php?u=${url}`);
+    setCoreShareStatus('Opened Facebook share. Attach the downloaded image manually.');
+    gtag('event', 'core_share_facebook');
+  });
+  coreShareCopyBtn.addEventListener('click', copyCoreShareLink);
+  coreShareDownloadBtn.addEventListener('click', downloadCoreShareImage);
+  if (!navigator.share) {
+    coreShareNativeBtn.disabled = true;
+    coreShareNativeBtn.textContent = 'Share Image (unsupported)';
+  }
+}
 
 function escapeHtml(str) {
   const div = document.createElement('div');
@@ -1674,6 +1895,7 @@ function updateLeaderboardSubmitBtn() {
 
 function enterDiggingMode() {
   gtag('event', 'mode_switch', { mode: 'core' });
+  resetCoreShareState();
   savedGardenState = getCurrentState();
   savedRakeAngle = rakeAngle;
   rakeAngle = Math.PI / 4; // Default core orientation: 45 degrees
@@ -1735,6 +1957,7 @@ function enterDiggingMode() {
 
 function exitDiggingMode() {
   gtag('event', 'mode_switch', { mode: 'zen' });
+  resetCoreShareState();
   sandHeight.set(savedGardenState.h);
   sandR.set(savedGardenState.r);
   sandG.set(savedGardenState.g);
