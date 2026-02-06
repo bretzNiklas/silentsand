@@ -115,6 +115,7 @@ function saveState() {
 
 function undo() {
   if (undoStack.length === 0) return;
+  gtag('event', 'undo');
   tlResumeForInteraction();
 
   // Save current state to redo stack before undoing
@@ -134,6 +135,7 @@ function undo() {
 
 function redo() {
   if (redoStack.length === 0) return;
+  gtag('event', 'redo');
   tlResumeForInteraction();
 
   // Save current state to undo stack before redoing
@@ -398,6 +400,7 @@ function generateNoiseMap() {
 
 function clearSand() {
   if (diggingMode) return;
+  gtag('event', 'clear_sand');
   saveState(); // Save state before clearing
   tlResumeForInteraction();
   initSand();
@@ -1347,6 +1350,7 @@ function onDocMouseUp() {
 canvas.addEventListener('mousedown', (e) => {
   if (e.target !== canvas) return;
   if (introPlaying) { abortIntro(); return; }
+  gtag('event', 'stroke_start', { input: 'mouse' });
   saveState(); // Save state before stroke
   drawing = true;
   tlResumeForInteraction();
@@ -1415,6 +1419,7 @@ canvas.addEventListener('touchstart', (e) => {
   if (e.target !== canvas) return;
   e.preventDefault();
   if (introPlaying) { abortIntro(); return; }
+  gtag('event', 'stroke_start', { input: 'touch' });
   saveState(); // Save state before stroke
   drawing = true;
   tlResumeForInteraction();
@@ -1589,6 +1594,7 @@ function renderLeaderboardList() {
 async function submitLeaderboardScore() {
   const nickname = leaderboardNickname.value.trim();
   if (nickname.length < 2 || !reachedBottom) return;
+  gtag('event', 'leaderboard_submit');
 
   // Calculate progressive percentage (surface to floor)
   let totalProgress = 0;
@@ -1637,6 +1643,7 @@ function updateLeaderboardSubmitBtn() {
 }
 
 function enterDiggingMode() {
+  gtag('event', 'mode_switch', { mode: 'core' });
   savedGardenState = getCurrentState();
   undoStack.length = 0;
   redoStack.length = 0;
@@ -1695,6 +1702,7 @@ function enterDiggingMode() {
 }
 
 function exitDiggingMode() {
+  gtag('event', 'mode_switch', { mode: 'zen' });
   sandHeight.set(savedGardenState.h);
   sandR.set(savedGardenState.r);
   sandG.set(savedGardenState.g);
@@ -1823,6 +1831,7 @@ guideBtn.addEventListener('click', () => guideUpload.click());
 guideUpload.addEventListener('change', (e) => {
   const file = e.target.files[0];
   if (!file) return;
+  gtag('event', 'guide_image_upload');
   const reader = new FileReader();
   reader.onload = (evt) => {
     guideOriginalSrc = evt.target.result;
@@ -1909,6 +1918,7 @@ tabBtns.forEach(btn => {
     tabContents.forEach(c => c.classList.remove('active'));
     btn.classList.add('active');
     document.getElementById(btn.dataset.tab).classList.add('active');
+    gtag('event', 'tab_switch', { tab: btn.dataset.tab.replace('tab-', '') });
   });
 });
 
@@ -1935,6 +1945,7 @@ function updateSymmetryLines() {
 
 mirrorVBtn.addEventListener('click', () => {
   mirrorV = !mirrorV;
+  gtag('event', 'mirror_toggle', { axis: 'vertical', enabled: mirrorV });
   mirrorVBtn.classList.toggle('active', mirrorV);
   updateSymmetryLines();
   markCursorDirty();
@@ -1944,6 +1955,7 @@ mirrorVBtn.addEventListener('click', () => {
 
 mirrorHBtn.addEventListener('click', () => {
   mirrorH = !mirrorH;
+  gtag('event', 'mirror_toggle', { axis: 'horizontal', enabled: mirrorH });
   mirrorHBtn.classList.toggle('active', mirrorH);
   updateSymmetryLines();
   markCursorDirty();
@@ -1953,6 +1965,7 @@ mirrorHBtn.addEventListener('click', () => {
 
 mirrorDBtn.addEventListener('click', () => {
   mirrorD = !mirrorD;
+  gtag('event', 'mirror_toggle', { axis: 'diagonal', enabled: mirrorD });
   mirrorDBtn.classList.toggle('active', mirrorD);
   updateSymmetryLines();
   markCursorDirty();
@@ -1963,6 +1976,7 @@ mirrorDBtn.addEventListener('click', () => {
 const alignCenterToggle = document.getElementById('alignCenterToggle');
 alignCenterToggle.addEventListener('change', () => {
   alignCenter = alignCenterToggle.checked;
+  gtag('event', 'center_align_toggle', { enabled: alignCenter });
   updateSymmetryLines();
   markCursorDirty();
   requestRender();
@@ -2027,10 +2041,19 @@ function loadSettings() {
 
 // Add global listener to save on any input change in settings panel
 document.getElementById('settingsPanel').addEventListener('input', saveSettings);
-document.getElementById('settingsPanel').addEventListener('change', saveSettings); // for checkbox
+document.getElementById('settingsPanel').addEventListener('change', (e) => {
+  saveSettings();
+  // Track slider/toggle changes on release
+  const el = e.target;
+  if (el.type === 'range') {
+    const label = el.id.replace('Slider', '').replace('dbg', '').toLowerCase();
+    gtag('event', 'slider_change', { slider: label, value: parseFloat(el.value) });
+  }
+});
 
 // Reset settings to defaults
 document.getElementById('resetSettingsBtn').addEventListener('click', () => {
+  gtag('event', 'reset_settings');
   localStorage.removeItem('zenGardenSettings');
   // Reset sliders to their HTML default values
   for (const def of SLIDER_CONFIG) {
@@ -2084,6 +2107,7 @@ openRequest.onsuccess = (e) => {
 
 async function saveToBrowser(name) {
   if (!db) return;
+  gtag('event', 'garden_save');
   const gardenData = {
     name: name || `Garden ${new Date().toLocaleTimeString()}`,
     date: Date.now(),
@@ -2109,6 +2133,7 @@ async function saveToBrowser(name) {
 
 async function loadFromBrowser(id) {
   if (!db) return;
+  gtag('event', 'garden_load');
   return new Promise((resolve, reject) => {
     const tx = db.transaction(STORE_NAME, 'readonly');
     const store = tx.objectStore(STORE_NAME);
@@ -2141,6 +2166,7 @@ async function loadFromBrowser(id) {
 
 async function deleteFromBrowser(id) {
   if (!db) return;
+  gtag('event', 'garden_delete');
   return new Promise((resolve, reject) => {
     const tx = db.transaction(STORE_NAME, 'readwrite');
     const store = tx.objectStore(STORE_NAME);
@@ -2399,8 +2425,10 @@ function tlScheduleIdlePause() {
 
 tlRecordBtn.addEventListener('click', () => {
   if (tlRecording) {
+    gtag('event', 'timelapse_stop');
     tlStop();
   } else {
+    gtag('event', 'timelapse_start', { mode: tlModeSelect.value });
     tlStart();
   }
 });
