@@ -19,8 +19,8 @@ const LEADERBOARD_API = 'https://us-central1-silentsands.cloudfunctions.net';
 
 // Fixed rake settings for digging mode
 const DIG_RAKE_SETTINGS = {
-  tineRadius: 8,
-  tineCount: 6,
+  tineRadius: window.matchMedia('(max-width: 768px)').matches ? 4 : 8,
+  tineCount: window.matchMedia('(max-width: 768px)').matches ? 4 : 6,
   gapMul: 2.5,
   depth: 0.10,
   rim: 0.05,
@@ -362,18 +362,30 @@ const SLIDER_CONFIG = [
 
 const sliderEls = {};
 
+function getScale(key) {
+  if (isMobile && key === 'tineRadius') return 0.5;
+  return 1.0;
+}
+
 function setupSliders() {
   for (const def of SLIDER_CONFIG) {
     const el = document.getElementById(def.id);
     const labelEl = def.labelId ? document.getElementById(def.labelId) : null;
     // Reset to HTML default (override browser autofill)
     el.value = el.getAttribute('value');
+
+    // Mobile-specific defaults
+    if (isMobile) {
+      if (def.key === 'tineCount') el.value = '4';
+      if (def.key === 'gapMul') el.value = '2.5';
+    }
+
     sliderEls[def.key] = { el, labelEl };
-    cached[def.key] = def.parse(el.value);
+    cached[def.key] = def.parse(el.value) * getScale(def.key);
     if (labelEl) labelEl.textContent = el.value;
 
     el.addEventListener('input', () => {
-      cached[def.key] = def.parse(el.value);
+      cached[def.key] = def.parse(el.value) * getScale(def.key);
       if (labelEl) labelEl.textContent = el.value;
       if (def.onChange) def.onChange();
     });
@@ -1530,7 +1542,7 @@ function applySliderValues(values) {
     const { el, labelEl } = entry;
     el.value = values[key];
     const def = SLIDER_CONFIG.find(c => c.key === key);
-    cached[key] = def.parse(el.value);
+    cached[key] = def.parse(el.value) * getScale(key);
     if (labelEl) labelEl.textContent = el.value;
   }
   tineProfileR = -1;
@@ -2014,7 +2026,7 @@ function loadSettings() {
       if (s[def.key] !== undefined) {
         const { el, labelEl } = sliderEls[def.key];
         el.value = s[def.key];
-        cached[def.key] = def.parse(el.value);
+        cached[def.key] = def.parse(el.value) * getScale(def.key);
         if (labelEl) labelEl.textContent = el.value;
       }
     }
@@ -2059,7 +2071,14 @@ document.getElementById('resetSettingsBtn').addEventListener('click', () => {
   for (const def of SLIDER_CONFIG) {
     const { el, labelEl } = sliderEls[def.key];
     el.value = el.getAttribute('value');
-    cached[def.key] = def.parse(el.value);
+
+    // Re-apply mobile-specific defaults
+    if (isMobile) {
+      if (def.key === 'tineCount') el.value = '4';
+      if (def.key === 'gapMul') el.value = '2.5';
+    }
+
+    cached[def.key] = def.parse(el.value) * getScale(def.key);
     if (labelEl) labelEl.textContent = el.value;
     if (def.onChange) def.onChange();
   }
