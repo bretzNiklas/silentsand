@@ -19,7 +19,7 @@ const LEADERBOARD_API = 'https://us-central1-silentsands.cloudfunctions.net';
 
 // Fixed rake settings for digging mode
 const DIG_RAKE_SETTINGS = {
-  tineRadius: window.matchMedia('(max-width: 768px)').matches ? 4 : 8,
+  tineRadius: window.matchMedia('(max-width: 768px)').matches ? 8 : 8,
   tineCount: window.matchMedia('(max-width: 768px)').matches ? 4 : 6,
   gapMul: 2.5,
   depth: 0.10,
