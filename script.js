@@ -455,6 +455,16 @@ function getPerpAt(x, y) {
     }
     return [1, 0];
   }
+  // Use handle direction for perpendicular when well-defined
+  if (rakeHeadInitialized) {
+    const hdx = mouseX - rakeHeadX;
+    const hdy = mouseY - rakeHeadY;
+    const hlen = Math.sqrt(hdx * hdx + hdy * hdy);
+    if (hlen > 2) {
+      // Perpendicular to handle direction (rotated 90°)
+      return [-hdy / hlen, hdx / hlen];
+    }
+  }
   return getRakePerp();
 }
 
@@ -489,6 +499,31 @@ let strokeDX = 0, strokeDY = 0;
 // Anchor point for axis-lock (Ctrl held)
 let anchorX = -1, anchorY = -1;
 let lockedAxis = null; // 'x' or 'y' once determined
+
+// --- Handle state (rake head trails behind cursor) ---
+let rakeHeadX = -1, rakeHeadY = -1;
+const handleLength = 60;
+let rakeHeadInitialized = false;
+
+function updateRakeHead(cursorX, cursorY) {
+  if (!rakeHeadInitialized) {
+    // Snap rake head to cursor on first interaction
+    rakeHeadX = cursorX;
+    rakeHeadY = cursorY;
+    rakeHeadInitialized = true;
+    return;
+  }
+  const dx = cursorX - rakeHeadX;
+  const dy = cursorY - rakeHeadY;
+  const dist = Math.sqrt(dx * dx + dy * dy);
+  if (dist > handleLength) {
+    // Pull rake head toward cursor so distance = handleLength (rigid rod)
+    const pull = dist - handleLength;
+    rakeHeadX += (dx / dist) * pull;
+    rakeHeadY += (dy / dist) * pull;
+  }
+  // If dist <= handleLength, rake head stays put
+}
 
 function getRakePerp() {
   return [Math.cos(rakeAngle), Math.sin(rakeAngle)];
@@ -1139,9 +1174,9 @@ function render() {
     ctx.save();
     const tineRadius = cached.tineRadius;
     const offsets = getRakeTineOffsets(tineRadius);
-    const [perpX, perpY] = getPerpAt(mouseX, mouseY);
+    const [perpX, perpY] = getPerpAt(rakeHeadX, rakeHeadY);
 
-    function drawCursorAt(cx, cy, px, py, strokeAlpha, fillAlpha) {
+    function drawTinesAt(cx, cy, px, py, strokeAlpha, fillAlpha) {
       ctx.strokeStyle = `rgba(80, 60, 40, ${strokeAlpha})`;
       ctx.fillStyle = `rgba(80, 60, 40, ${fillAlpha})`;
       ctx.lineWidth = 1;
@@ -1165,14 +1200,35 @@ function render() {
       }
     }
 
-    // Primary cursor
-    drawCursorAt(mouseX, mouseY, perpX, perpY, 0.35, 0.2);
+    function drawHandleAt(gripX, gripY, headX, headY, handleAlpha) {
+      // Handle line from grip (cursor) to rake head
+      ctx.strokeStyle = `rgba(80, 60, 40, ${handleAlpha * 0.7})`;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(gripX, gripY);
+      ctx.lineTo(headX, headY);
+      ctx.stroke();
+      // Grip dot at cursor position
+      ctx.fillStyle = `rgba(80, 60, 40, ${handleAlpha * 0.85})`;
+      ctx.beginPath();
+      ctx.arc(gripX, gripY, 3, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Primary cursor: tines at rake head, handle from cursor to rake head
+    drawTinesAt(rakeHeadX, rakeHeadY, perpX, perpY, 0.35, 0.2);
+    drawHandleAt(mouseX, mouseY, rakeHeadX, rakeHeadY, 0.35);
 
     // Mirror ghost cursors
     if (mirrorV || mirrorH || mirrorD) {
-      const pts = getSymmetryPoints(mouseX, mouseY, 0, 0, perpX, perpY);
+      const pts = getSymmetryPoints(rakeHeadX, rakeHeadY, 0, 0, perpX, perpY);
+      // Also mirror the grip (cursor) position
+      const gripPts = getSymmetryPoints(mouseX, mouseY, 0, 0, perpX, perpY);
       for (let i = 1; i < pts.length; i++) {
-        drawCursorAt(pts[i].x, pts[i].y, pts[i].perpX, pts[i].perpY, 0.15, 0.08);
+        drawTinesAt(pts[i].x, pts[i].y, pts[i].perpX, pts[i].perpY, 0.15, 0.08);
+        if (i < gripPts.length) {
+          drawHandleAt(gripPts[i].x, gripPts[i].y, pts[i].x, pts[i].y, 0.15);
+        }
       }
     }
     ctx.restore();
@@ -1226,20 +1282,32 @@ function markCursorDirty() {
   if (!onCanvas) return;
   const tineRadius = cached.tineRadius;
   const offsets = getRakeTineOffsets(tineRadius);
-  const [px, py] = getPerpAt(mouseX, mouseY);
+  const [px, py] = getPerpAt(rakeHeadX, rakeHeadY);
 
-  function markCursorAt(cx, cy, cpx, cpy) {
+  function markTinesAt(cx, cy, cpx, cpy) {
     for (const offset of offsets) {
       markDirty(cx + cpx * offset, cy + cpy * offset, tineRadius + 2);
     }
   }
 
-  markCursorAt(mouseX, mouseY, px, py);
+  // Mark rake head (tines) dirty
+  markTinesAt(rakeHeadX, rakeHeadY, px, py);
+  // Mark grip (cursor) position dirty
+  markDirty(mouseX, mouseY, 5);
+  // Mark handle line between grip and rake head
+  markDirty((mouseX + rakeHeadX) / 2, (mouseY + rakeHeadY) / 2,
+    Math.max(Math.abs(mouseX - rakeHeadX), Math.abs(mouseY - rakeHeadY)) / 2 + 4);
 
   if (mirrorV || mirrorH || mirrorD) {
-    const pts = getSymmetryPoints(mouseX, mouseY, 0, 0, px, py);
+    const pts = getSymmetryPoints(rakeHeadX, rakeHeadY, 0, 0, px, py);
+    const gripPts = getSymmetryPoints(mouseX, mouseY, 0, 0, px, py);
     for (let i = 1; i < pts.length; i++) {
-      markCursorAt(pts[i].x, pts[i].y, pts[i].perpX, pts[i].perpY);
+      markTinesAt(pts[i].x, pts[i].y, pts[i].perpX, pts[i].perpY);
+      if (i < gripPts.length) {
+        markDirty(gripPts[i].x, gripPts[i].y, 5);
+        markDirty((gripPts[i].x + pts[i].x) / 2, (gripPts[i].y + pts[i].y) / 2,
+          Math.max(Math.abs(gripPts[i].x - pts[i].x), Math.abs(gripPts[i].y - pts[i].y)) / 2 + 4);
+      }
     }
   }
 }
@@ -1258,11 +1326,12 @@ function axisLock(x, y) {
 function onDocMouseMove(e) {
   let [x, y] = getPos(e);
   if (e.ctrlKey) [x, y] = axisLock(x, y);
-  strokeTo(x, y);
-  // Update cursor if still on canvas
+  // Update cursor position first so getPerpAt sees the handle direction
+  if (onCanvas) markCursorDirty();
+  mouseX = x; mouseY = y;
+  updateRakeHead(x, y);
+  strokeTo(rakeHeadX, rakeHeadY);
   if (onCanvas) {
-    markCursorDirty();
-    mouseX = x; mouseY = y;
     markCursorDirty();
   }
   requestRender();
@@ -1282,12 +1351,14 @@ canvas.addEventListener('mousedown', (e) => {
   drawing = true;
   tlResumeForInteraction();
   const [x, y] = getPos(e);
-  lastX = x; lastY = y;
+  mouseX = x; mouseY = y;
+  updateRakeHead(x, y);
+  lastX = rakeHeadX; lastY = rakeHeadY;
   anchorX = x; anchorY = y;
   lockedAxis = null;
   strokeDX = 0; strokeDY = 0;
   const carveStart = performance.now();
-  carveRakeSymmetric(x, y, cached.tineRadius, 0, 0);
+  carveRakeSymmetric(rakeHeadX, rakeHeadY, cached.tineRadius, 0, 0);
   carveTimeAccum += performance.now() - carveStart;
   requestRender();
   // Track mouse at document level so stroke continues outside canvas
@@ -1302,6 +1373,7 @@ canvas.addEventListener('mousemove', (e) => {
   const [x, y] = getPos(e);
   mouseX = x; mouseY = y;
   onCanvas = true;
+  updateRakeHead(x, y);
   markCursorDirty();
   requestRender();
 });
@@ -1347,14 +1419,15 @@ canvas.addEventListener('touchstart', (e) => {
   drawing = true;
   tlResumeForInteraction();
   const [x, y] = getPos(e);
-  lastX = x; lastY = y;
-  anchorX = x; anchorY = y;
-  lockedAxis = null;
   mouseX = x; mouseY = y;
   onCanvas = true;
+  updateRakeHead(x, y);
+  lastX = rakeHeadX; lastY = rakeHeadY;
+  anchorX = x; anchorY = y;
+  lockedAxis = null;
   strokeDX = 0; strokeDY = 0;
   const carveStart = performance.now();
-  carveRakeSymmetric(x, y, cached.tineRadius, 0, 0);
+  carveRakeSymmetric(rakeHeadX, rakeHeadY, cached.tineRadius, 0, 0);
   carveTimeAccum += performance.now() - carveStart;
   requestRender();
 });
@@ -1364,8 +1437,9 @@ canvas.addEventListener('touchmove', (e) => {
   const [x, y] = getPos(e);
   markCursorDirty();
   mouseX = x; mouseY = y;
+  updateRakeHead(x, y);
   if (drawing) {
-    strokeTo(x, y);
+    strokeTo(rakeHeadX, rakeHeadY);
   }
   markCursorDirty();
   requestRender();
