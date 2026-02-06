@@ -8,6 +8,7 @@ const redoBtn = document.getElementById('redoBtn');
 let diggingMode = false;
 let savedGardenState = null;   // {h, r, g, b} snapshot
 let savedRakeSettings = null;  // slider values snapshot for restoring on dig exit
+let savedRakeAngle = null;     // rotation snapshot for restoring on dig exit
 let quotePixels = null;        // Uint8Array bitmask: 1 = text pixel
 let deepestHeight = 2.0;      // tracks minimum sandHeight during dig session
 // (dig mode uses subtractive carving — no accumulator needed)
@@ -19,7 +20,7 @@ const LEADERBOARD_API = 'https://us-central1-silentsands.cloudfunctions.net';
 
 // Fixed rake settings for digging mode
 const DIG_RAKE_SETTINGS = {
-  tineRadius: window.matchMedia('(max-width: 768px)').matches ? 8 : 8,
+  tineRadius: window.matchMedia('(max-width: 768px)').matches ? 12 : 8,
   tineCount: window.matchMedia('(max-width: 768px)').matches ? 4 : 6,
   gapMul: 2.5,
   depth: 0.10,
@@ -461,6 +462,10 @@ let alignCenter = false; // center alignment
 
 // --- Helper for alignment ---
 function getPerpAt(x, y) {
+  // In core mode, keep rake orientation fixed to manual wheel rotation.
+  if (diggingMode) {
+    return getRakePerp();
+  }
   if (alignCenter) {
     const dx = x - W / 2;
     const dy = y - H / 2;
@@ -518,6 +523,8 @@ let lockedAxis = null; // 'x' or 'y' once determined
 // --- Handle state (rake head trails behind cursor) ---
 let rakeHeadX = -1, rakeHeadY = -1;
 const handleLength = 60;
+const coreHandleLength = 30;
+const coreHandleStiffness = 0.6;
 let rakeHeadInitialized = false;
 
 function updateRakeHead(cursorX, cursorY) {
@@ -528,16 +535,27 @@ function updateRakeHead(cursorX, cursorY) {
     rakeHeadInitialized = true;
     return;
   }
-  const dx = cursorX - rakeHeadX;
-  const dy = cursorY - rakeHeadY;
-  const dist = Math.sqrt(dx * dx + dy * dy);
-  if (dist > handleLength) {
-    // Pull rake head toward cursor so distance = handleLength (rigid rod)
-    const pull = dist - handleLength;
+  const activeHandleLength = diggingMode ? coreHandleLength : handleLength;
+  let dx = cursorX - rakeHeadX;
+  let dy = cursorY - rakeHeadY;
+  let dist = Math.sqrt(dx * dx + dy * dy);
+
+  if (diggingMode && dist > 0) {
+    // In core mode, reduce slack so the handle feels short and stiff.
+    rakeHeadX += dx * coreHandleStiffness;
+    rakeHeadY += dy * coreHandleStiffness;
+    dx = cursorX - rakeHeadX;
+    dy = cursorY - rakeHeadY;
+    dist = Math.sqrt(dx * dx + dy * dy);
+  }
+
+  if (dist > activeHandleLength) {
+    // Pull rake head toward cursor so distance = activeHandleLength (rigid rod)
+    const pull = dist - activeHandleLength;
     rakeHeadX += (dx / dist) * pull;
     rakeHeadY += (dy / dist) * pull;
   }
-  // If dist <= handleLength, rake head stays put
+  // If dist <= activeHandleLength, rake head stays put
 }
 
 function getRakePerp() {
@@ -1657,6 +1675,8 @@ function updateLeaderboardSubmitBtn() {
 function enterDiggingMode() {
   gtag('event', 'mode_switch', { mode: 'core' });
   savedGardenState = getCurrentState();
+  savedRakeAngle = rakeAngle;
+  rakeAngle = Math.PI / 4; // Default core orientation: 45 degrees
   undoStack.length = 0;
   redoStack.length = 0;
   updateHistoryBtns();
@@ -1735,6 +1755,10 @@ function exitDiggingMode() {
   if (savedRakeSettings) {
     applySliderValues(savedRakeSettings);
     savedRakeSettings = null;
+  }
+  if (savedRakeAngle !== null) {
+    rakeAngle = savedRakeAngle;
+    savedRakeAngle = null;
   }
   for (const key of Object.keys(DIG_RAKE_SETTINGS)) {
     sliderEls[key].el.disabled = false;
