@@ -108,7 +108,7 @@
   button:hover { background: #5a4a35; color: #e8d5b7; }
   button.active { background: #5a4a35; color: #e8d5b7; }
 
-  .size-controls { display: flex; align-items: center; gap: 8px; }
+  .size-controls { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
   .size-controls span { color: #c2a67d; font-size: 12px; letter-spacing: 0.1em; font-weight: 500; }
   input[type="range"] {
     -webkit-appearance: none;
@@ -125,9 +125,9 @@
     border-radius: 50%;
     cursor: pointer;
   }
-  .tine-controls { display: flex; align-items: center; gap: 8px; }
+  .tine-controls { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
   .tine-controls span { color: #c2a67d; font-size: 12px; letter-spacing: 0.1em; font-weight: 500; }
-  .tine-controls .tine-label { color: #c2a67d; min-width: 8px; text-align: center; }
+  .tine-label { color: #c2a67d; min-width: 28px; text-align: right; flex-shrink: 0; font-variant-numeric: tabular-nums; }
   .info-i {
     display: inline-flex; align-items: center; justify-content: center;
     width: 13px; height: 13px; border-radius: 50%;
