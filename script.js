@@ -1642,6 +1642,16 @@ function trackCoreShareButtonClick(button) {
   gtag('event', 'core_share_button_click', { button });
 }
 
+function trackShareAction(network, action, postType, method = '') {
+  gtag('event', 'share_action', {
+    network,
+    action,
+    post_type: postType,
+    method,
+    mode: 'core'
+  });
+}
+
 function revokeCoreShareImageUrl() {
   if (coreShareImageUrl) {
     URL.revokeObjectURL(coreShareImageUrl);
@@ -1855,10 +1865,12 @@ function getCoreShareSourceUrl() {
 async function shareCoreImage() {
   if (!coreShareImageBlob) {
     setCoreShareStatus('Image not ready yet');
+    trackShareAction('native', 'fail', 'image', 'not_ready');
     return;
   }
   if (!navigator.share) {
     setCoreShareStatus('Native share unavailable on this browser');
+    trackShareAction('native', 'fail', 'image', 'unsupported');
     return;
   }
   const shareUrl = await ensureCoreShareHostedUrl();
@@ -1876,12 +1888,15 @@ async function shareCoreImage() {
   try {
     await navigator.share(shareData);
     gtag('event', 'core_share_native');
+    trackShareAction('native', 'success', 'image', 'web_share');
     setCoreShareStatus('Shared');
   } catch (err) {
     if (err && err.name !== 'AbortError') {
       setCoreShareStatus('Share canceled or failed');
+      trackShareAction('native', 'fail', 'image', 'web_share');
     } else {
       setCoreShareStatus('');
+      trackShareAction('native', 'cancel', 'image', 'web_share');
     }
   }
 }
@@ -1889,6 +1904,7 @@ async function shareCoreImage() {
 async function shareCoreImageToX() {
   if (!coreShareImageBlob) {
     setCoreShareStatus('Image not ready yet');
+    trackShareAction('x', 'fail', 'image', 'not_ready');
     return;
   }
 
@@ -1903,6 +1919,7 @@ async function shareCoreImageToX() {
         await navigator.share(shareData);
         setCoreShareStatus('Shared. Choose X in the share sheet to post image media.');
         gtag('event', 'core_share_x_native');
+        trackShareAction('x', 'success', 'image', 'native_share_sheet');
         return;
       }
     } catch (err) {
@@ -1923,6 +1940,7 @@ async function shareCoreImageToX() {
       openShareUrl(`https://twitter.com/intent/tweet?text=${text}`);
       setCoreShareStatus('Opened X composer. Press Ctrl+V (or Paste) to attach the image.');
       gtag('event', 'core_share_x_clipboard');
+      trackShareAction('x', 'open', 'image', 'clipboard_paste');
       return;
     } catch (err) {
       console.error('Clipboard image copy failed:', err);
@@ -1935,11 +1953,13 @@ async function shareCoreImageToX() {
   openShareUrl(`https://twitter.com/intent/tweet?text=${text}&url=${url}`);
   setCoreShareStatus('X web intent can only prefill links. For image media, use Share Image or Download Image.');
   gtag('event', 'core_share_x_link_fallback');
+  trackShareAction('x', 'open', 'link', 'web_intent');
 }
 
 function downloadCoreShareImage() {
   if (!coreShareImageBlob) {
     setCoreShareStatus('Image not ready yet');
+    trackShareAction('download', 'fail', 'image', 'not_ready');
     return;
   }
   if (!coreShareImageUrl) coreShareImageUrl = URL.createObjectURL(coreShareImageBlob);
@@ -1951,6 +1971,7 @@ function downloadCoreShareImage() {
   document.body.removeChild(a);
   setCoreShareStatus('Image downloaded');
   gtag('event', 'core_share_download');
+  trackShareAction('download', 'success', 'image', 'file_download');
 }
 
 if (coreShareModal) {
@@ -1967,14 +1988,17 @@ if (coreShareModal) {
   });
   coreShareNativeBtn.addEventListener('click', () => {
     trackCoreShareButtonClick('native');
+    trackShareAction('native', 'click', 'image', 'web_share');
     shareCoreImage();
   });
   coreShareXBtn.addEventListener('click', () => {
     trackCoreShareButtonClick('x');
+    trackShareAction('x', 'click', 'image', 'auto');
     shareCoreImageToX();
   });
   coreShareFacebookBtn.addEventListener('click', async () => {
     trackCoreShareButtonClick('facebook');
+    trackShareAction('facebook', 'click', 'link', 'share_dialog');
     const hostedUrl = await ensureCoreShareHostedUrl();
     const url = encodeURIComponent(hostedUrl || getCoreShareLinkUrl());
     const quote = encodeURIComponent(CORE_SHARE_TEXT);
@@ -1985,12 +2009,15 @@ if (coreShareModal) {
       setCoreShareStatus('Opened Facebook share. Use Download Image for manual attach.');
     }
     gtag('event', 'core_share_facebook');
+    trackShareAction('facebook', 'open', 'link', 'share_dialog');
   });
   coreSharePinterestBtn.addEventListener('click', async () => {
     trackCoreShareButtonClick('pinterest');
+    trackShareAction('pinterest', 'click', 'image', 'create_pin');
     const hostedUrl = await ensureCoreShareHostedUrl();
     if (!hostedUrl) {
       setCoreShareStatus('Pinterest works best with hosted image. Use Download Image if upload fails.');
+      trackShareAction('pinterest', 'fail', 'image', 'missing_hosted_image');
       return;
     }
     const url = encodeURIComponent(getCoreShareSourceUrl());
@@ -1999,16 +2026,20 @@ if (coreShareModal) {
     openShareUrl(`https://pinterest.com/pin/create/button/?url=${url}&media=${media}&description=${description}`);
     setCoreShareStatus('Opened Pinterest share with your hosted image.');
     gtag('event', 'core_share_pinterest');
+    trackShareAction('pinterest', 'open', 'image', 'create_pin');
   });
   coreShareLinkedinBtn.addEventListener('click', () => {
     trackCoreShareButtonClick('linkedin');
+    trackShareAction('linkedin', 'click', 'link', 'share_offsite');
     const url = encodeURIComponent(getCoreShareSourceUrl());
     openShareUrl(`https://www.linkedin.com/sharing/share-offsite/?url=${url}`);
     setCoreShareStatus('Opened LinkedIn share with the Silent Sand website link.');
     gtag('event', 'core_share_linkedin');
+    trackShareAction('linkedin', 'open', 'link', 'share_offsite');
   });
   coreShareDownloadBtn.addEventListener('click', () => {
     trackCoreShareButtonClick('download');
+    trackShareAction('download', 'click', 'image', 'file_download');
     downloadCoreShareImage();
   });
 }
