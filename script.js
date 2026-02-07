@@ -1611,6 +1611,7 @@ const coreShareXBtn = document.getElementById('coreShareXBtn');
 const coreShareFacebookBtn = document.getElementById('coreShareFacebookBtn');
 const coreShareCopyBtn = document.getElementById('coreShareCopyBtn');
 const coreShareDownloadBtn = document.getElementById('coreShareDownloadBtn');
+const coreCheatBtn = document.getElementById('coreCheatBtn');
 
 function setCoreShareStatus(message) {
   if (coreShareStatus) coreShareStatus.textContent = message;
@@ -1891,6 +1892,35 @@ async function submitLeaderboardScore() {
 
 function updateLeaderboardSubmitBtn() {
   leaderboardSubmitBtn.disabled = !reachedBottom || leaderboardNickname.value.trim().length < 2;
+}
+
+function debugClearToCore() {
+  if (!diggingMode) return;
+
+  const coreH = 0.1;
+  getDepthColor(coreH, 2.0, _depthCol);
+  for (let i = 0; i < totalPixels; i++) {
+    sandHeight[i] = coreH;
+    sandR[i] = _depthCol[0];
+    sandG[i] = _depthCol[1];
+    sandB[i] = _depthCol[2];
+  }
+
+  deepestHeight = coreH;
+  reachedBottom = true;
+  depthBar.style.opacity = '0';
+  clearedBar.style.opacity = '1';
+  leaderboardHint.style.display = 'none';
+  leaderboardSubmit.style.display = '';
+  updateLeaderboardSubmitBtn();
+  gtag('event', 'core_debug_clear_cheat');
+
+  markFullDirty();
+  requestRender();
+}
+
+if (coreCheatBtn) {
+  coreCheatBtn.addEventListener('click', debugClearToCore);
 }
 
 function enterDiggingMode() {

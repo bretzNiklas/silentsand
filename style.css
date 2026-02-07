@@ -673,6 +673,25 @@
     text-align: center;
   }
 
+  .core-debug-row {
+    margin-top: 10px;
+    text-align: right;
+  }
+  .core-debug-btn {
+    font-size: 9px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 4px 8px;
+    border-color: #5a4a3566;
+    color: #5a4a35;
+    opacity: 0.6;
+  }
+  .core-debug-btn:hover {
+    opacity: 1;
+    color: #c2a67d;
+    background: #3a3228;
+  }
+
   /* Core share modal */
   .core-share-modal {
     position: fixed;
@@ -1072,6 +1091,11 @@
     }
     #coreDesc p {
       font-size: 13px !important;
+    }
+    .core-debug-btn {
+      min-height: 28px;
+      padding: 4px 8px;
+      font-size: 9px;
     }
 
     /* Mode selector */
