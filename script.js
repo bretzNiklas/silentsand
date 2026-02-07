@@ -37,11 +37,12 @@ let coreShareImageUrl = '';
 let coreShareHostedUrl = '';
 let coreShareUploadPromise = null;
 let coreShareUploadGeneration = 0;
+const MOBILE_MEDIA_QUERY = '(max-width: 768px) and (pointer: coarse)';
 
 // Fixed rake settings for digging mode
 const DIG_RAKE_SETTINGS = {
-  tineRadius: window.matchMedia('(max-width: 768px)').matches ? 12 : 8,
-  tineCount: window.matchMedia('(max-width: 768px)').matches ? 4 : 6,
+  tineRadius: window.matchMedia(MOBILE_MEDIA_QUERY).matches ? 12 : 8,
+  tineCount: window.matchMedia(MOBILE_MEDIA_QUERY).matches ? 4 : 6,
   gapMul: 2.5,
   depth: 0.10,
   rim: 0.05,
@@ -227,7 +228,7 @@ document.addEventListener('keyup', (e) => {
 });
 window.addEventListener('blur', () => heldKeys.clear());
 
-const isMobile = window.matchMedia('(max-width: 768px)').matches;
+const isMobile = window.matchMedia(MOBILE_MEDIA_QUERY).matches;
 
 // --- Cached slider values (optimization #3) ---
 const cached = {};
