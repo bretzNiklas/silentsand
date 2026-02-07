@@ -50,9 +50,9 @@ const SLIME_SOLID_RAKE_WIDTH_SCALE = 0.9;
 const SLIME_CLEAN_STRENGTH = 0.55;
 const SLIME_VISUAL_GAIN = 1.7;
 const SLIME_CRITICAL_MASS_RATIO = 0.25;
-const SLIME_INITIAL_SPAWN_INTERVAL_MS = 3600;
-const SLIME_MIN_SPAWN_INTERVAL_MS = 700;
-const SLIME_SPAWN_ACCEL_MS_PER_SEC = 90;
+const SLIME_INITIAL_SPAWN_INTERVAL_MS = 3000;
+const SLIME_MIN_SPAWN_INTERVAL_MS = 550;
+const SLIME_SPAWN_ACCEL_MS_PER_SEC = 120;
 const SLIME_TICK_MS = 200;
 const SLIME_SPAWN_FADE_GAIN = 0.22;
 const SLIME_MIN_STEP_FRAC = 0.5;
@@ -95,6 +95,7 @@ const DIG_RAKE_SETTINGS = {
 const SLIME_RAKE_SETTINGS = {
   tineRadius: window.matchMedia(MOBILE_MEDIA_QUERY).matches ? 12 : 9,
   tineCount: 4,
+  handleLength: window.matchMedia(MOBILE_MEDIA_QUERY).matches ? 34 : 44,
   gapMul: 2.1,
   depth: 0.28,
   rim: 0.03,
@@ -2080,7 +2081,7 @@ function isSlimeSpawnAreaClear(cx, cy, radius) {
   for (let i = 0; i < samples.length; i++) {
     const sx = Math.round(cx + samples[i][0] * radius);
     const sy = Math.round(cy + samples[i][1] * radius);
-    if (sx < 0 || sx >= W || sy < 0 || sy >= H) return false;
+    if (sx < 0 || sx >= W || sy < 0 || sy >= H) continue;
     const idx = sy * W + sx;
     if (slimeAmount[idx] > SLIME_SPAWN_OCCUPIED_THRESHOLD) return false;
   }
@@ -2090,8 +2091,8 @@ function isSlimeSpawnAreaClear(cx, cy, radius) {
 function trySpawnSlimePatch(radius, strength, attempts = SLIME_SPAWN_RETRY_ATTEMPTS) {
   if (!slimeAmount) return null;
   for (let attempt = 0; attempt < attempts; attempt++) {
-    const cx = radius + Math.random() * (W - radius * 2);
-    const cy = radius + Math.random() * (H - radius * 2);
+    const cx = Math.random() * (W - 1);
+    const cy = Math.random() * (H - 1);
     if (!isSlimeSpawnAreaClear(cx, cy, radius)) continue;
     const addedMass = addSlimePatch(cx, cy, radius, strength);
     return { cx, cy, radius, addedMass };
@@ -2138,17 +2139,18 @@ function spawnEscalationSlime(elapsedMs) {
   if (!slimeAmount || !slimeDisplayAmount) return;
   const minDim = Math.min(W, H);
   const elapsedSec = elapsedMs / 1000;
-  const extraPatches = (elapsedSec > 8 && Math.random() < 0.65 ? 1 : 0) +
-    (elapsedSec > 25 && Math.random() < 0.5 ? 1 : 0) +
-    (elapsedSec > 60 && Math.random() < 0.35 ? 1 : 0);
-  const patchCount = 2 + extraPatches;
+  const extraPatches = (elapsedSec > 5 && Math.random() < 0.75 ? 1 : 0) +
+    (elapsedSec > 16 && Math.random() < 0.65 ? 1 : 0) +
+    (elapsedSec > 35 && Math.random() < 0.5 ? 1 : 0) +
+    (elapsedSec > 80 && Math.random() < 0.35 ? 1 : 0);
+  const patchCount = 3 + extraPatches;
   let addedMass = 0;
   let minX = W, minY = H, maxX = -1, maxY = -1;
-  const sizeGrowth = Math.min(0.14, elapsedSec / 300);
+  const sizeGrowth = Math.min(0.18, elapsedSec / 220);
 
   for (let i = 0; i < patchCount; i++) {
-    const radius = minDim * (0.04 + Math.random() * 0.055 + sizeGrowth);
-    const strength = Math.min(1, 0.7 + Math.random() * 0.3 + Math.min(0.35, elapsedSec / 100));
+    const radius = minDim * (0.045 + Math.random() * 0.065 + sizeGrowth);
+    const strength = Math.min(1, 0.78 + Math.random() * 0.28 + Math.min(0.4, elapsedSec / 80));
     const patch = trySpawnSlimePatch(radius, strength);
     if (!patch || patch.addedMass <= 0) continue;
     addedMass += patch.addedMass;
@@ -2200,7 +2202,7 @@ function startSlimeTicking(nextSpawnInMs = null) {
     }
 
     let loops = 0;
-    while (now >= slimeNextSpawnAtMs && loops < 4) {
+    while (now >= slimeNextSpawnAtMs && loops < 6) {
       spawnEscalationSlime(slimeSurvivalMs);
       slimeNextSpawnAtMs += getSlimeSpawnIntervalMs(slimeSurvivalMs);
       loops++;
@@ -2212,11 +2214,11 @@ function startSlimeTicking(nextSpawnInMs = null) {
 function spawnSlimeRound() {
   ensureSlimeBuffer();
   const minDim = Math.min(W, H);
-  const patchCount = isMobile ? 4 : 5;
+  const patchCount = isMobile ? 5 : 7;
 
   for (let i = 0; i < patchCount; i++) {
-    const radius = minDim * (0.055 + Math.random() * 0.065);
-    const strength = 0.7 + Math.random() * 0.28;
+    const radius = minDim * (0.06 + Math.random() * 0.08);
+    const strength = 0.78 + Math.random() * 0.22;
     const patch = trySpawnSlimePatch(radius, strength, SLIME_SPAWN_RETRY_ATTEMPTS + 8);
     if (!patch) continue;
   }
