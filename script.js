@@ -9,7 +9,7 @@ let diggingMode = false;
 let savedGardenState = null;   // {h, r, g, b} snapshot
 let savedRakeSettings = null;  // slider values snapshot for restoring on dig exit
 let savedRakeAngle = null;     // rotation snapshot for restoring on dig exit
-let quotePixels = null;        // Uint8Array bitmask: 1 = text pixel
+let quotePixels = null;        // Uint8Array alpha mask: 0..255 text coverage
 let deepestHeight = 2.0;      // tracks minimum sandHeight during dig session
 // (dig mode uses subtractive carving — no accumulator needed)
 
@@ -1102,13 +1102,15 @@ function updateDepthPill() {
     let totalProgress = 0;
     let quoteTotal = 0;
     let quoteRevealed = 0;
+    const inv255 = 1 / 255;
     for (let i = 0; i < totalPixels; i++) {
       const h = sandHeight[i];
       const progress = Math.max(0, Math.min(1, (2.0 - h) / 1.9));
       totalProgress += progress;
-      if (quotePixels && quotePixels[i]) {
-        quoteTotal++;
-        if (h <= CORE_QUOTE_REVEAL_HEIGHT) quoteRevealed++;
+      if (quotePixels && quotePixels[i] > 0) {
+        const w = quotePixels[i] * inv255;
+        quoteTotal += w;
+        if (h <= CORE_QUOTE_REVEAL_HEIGHT) quoteRevealed += w;
       }
     }
     const clearedPct = (totalProgress / totalPixels * 100);
@@ -1178,9 +1180,10 @@ function render() {
           let lG = baseG; 
           let lB = baseB;
 
-          if (normDug > 0.85 && quotePixels && quotePixels[idx]) {
+          if (normDug > 0.85 && quotePixels && quotePixels[idx] > 0) {
             // Quote reveal: blend toward warm accent #e8d5b7
-            const qt = (normDug - 0.85) / 0.15;
+            const quoteAlpha = quotePixels[idx] / 255;
+            const qt = ((normDug - 0.85) / 0.15) * quoteAlpha;
             const qInv = 1 - qt;
             d[pi]     = lR * shade * qInv + 232 * qt + noise;
             d[pi + 1] = lG * shade * qInv + 213 * qt + noise;
@@ -1532,6 +1535,12 @@ function buildQuotePixels() {
   offscreen.width = W;
   offscreen.height = H;
   const octx = offscreen.getContext('2d');
+  if (!octx) {
+    quotePixels = null;
+    return;
+  }
+  octx.imageSmoothingEnabled = true;
+  octx.imageSmoothingQuality = 'high';
 
   // Auto-size font: start large, shrink to fit with word-wrap
   let fontSize = Math.floor(Math.min(W, H) * 0.12);
@@ -1578,12 +1587,12 @@ function buildQuotePixels() {
     octx.fillText(lines[i], W / 2, startY + i * fontSize * lineHeight);
   }
 
-  // Read alpha channel into bitmask
+  // Read alpha channel into per-pixel text coverage.
   const id = octx.getImageData(0, 0, W, H);
   const d = id.data;
   quotePixels = new Uint8Array(totalPixels);
   for (let i = 0; i < totalPixels; i++) {
-    quotePixels[i] = d[i * 4 + 3] > 128 ? 1 : 0;
+    quotePixels[i] = d[i * 4 + 3];
   }
 }
 
@@ -1669,10 +1678,12 @@ function getQuoteRevealRatio() {
   if (!quotePixels) return 0;
   let quoteTotal = 0;
   let quoteRevealed = 0;
+  const inv255 = 1 / 255;
   for (let i = 0; i < totalPixels; i++) {
-    if (!quotePixels[i]) continue;
-    quoteTotal++;
-    if (sandHeight[i] <= CORE_QUOTE_REVEAL_HEIGHT) quoteRevealed++;
+    if (quotePixels[i] <= 0) continue;
+    const w = quotePixels[i] * inv255;
+    quoteTotal += w;
+    if (sandHeight[i] <= CORE_QUOTE_REVEAL_HEIGHT) quoteRevealed += w;
   }
   return quoteTotal > 0 ? quoteRevealed / quoteTotal : 0;
 }

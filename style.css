@@ -676,6 +676,7 @@
   .core-debug-row {
     margin-top: 10px;
     text-align: right;
+    display: none;
   }
   .core-debug-btn {
     font-size: 9px;
