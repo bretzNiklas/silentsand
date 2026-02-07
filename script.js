@@ -550,10 +550,48 @@ const SLIDER_CONFIG = [
 ];
 
 const sliderEls = {};
+let savedSandboxTineCountForSolid = null;
 
 function getScale(key) {
   if (isMobile && key === 'tineRadius') return 0.5;
   return 1.0;
+}
+
+function setTineCountSliderValue(value) {
+  const entry = sliderEls.tineCount;
+  if (!entry) return;
+  const { el, labelEl } = entry;
+  el.value = String(value);
+  cached.tineCount = parseInt(el.value, 10) * getScale('tineCount');
+  if (labelEl) labelEl.textContent = el.value;
+}
+
+function updateSolidRakeConstraints() {
+  const entry = sliderEls.tineCount;
+  if (!entry) return;
+  const { el } = entry;
+  const shouldLockTines = isSolidRakeActive();
+
+  if (shouldLockTines) {
+    if (!diggingMode && savedSandboxTineCountForSolid === null) {
+      savedSandboxTineCountForSolid = el.value;
+    }
+    if (el.value !== '4') {
+      setTineCountSliderValue('4');
+      markCursorDirty();
+      requestRender();
+    }
+    el.disabled = true;
+    return;
+  }
+
+  el.disabled = false;
+  if (savedSandboxTineCountForSolid !== null) {
+    setTineCountSliderValue(savedSandboxTineCountForSolid);
+    savedSandboxTineCountForSolid = null;
+    markCursorDirty();
+    requestRender();
+  }
 }
 
 function setupSliders() {
@@ -579,6 +617,7 @@ function setupSliders() {
       if (def.onChange) def.onChange();
     });
   }
+  updateSolidRakeConstraints();
 }
 
 function initSand() {
@@ -1699,6 +1738,9 @@ canvas.addEventListener('wheel', (e) => {
   if (introPlaying) return;
   const dir = e.deltaY > 0 ? -1 : 1;
   const wheelSliderKey = heldKeys.has('t') ? 'tineCount' : heldKeys.has('g') ? 'gapMul' : heldKeys.has('s') ? 'tineRadius' : null;
+  if (wheelSliderKey === 'tineCount' && isSolidRakeActive()) {
+    return;
+  }
   if (wheelSliderKey) {
     markCursorDirty(); // mark old cursor area before cached values change
     const { el, labelEl } = sliderEls[wheelSliderKey];
@@ -2496,6 +2538,7 @@ function enterDiggingMode() {
   updateDepthPill();
 
   diggingMode = true;
+  updateSolidRakeConstraints();
 
   markFullDirty();
   requestRender();
@@ -2543,6 +2586,7 @@ function exitDiggingMode() {
   for (const key of Object.keys(DIG_RAKE_SETTINGS)) {
     sliderEls[key].el.disabled = false;
   }
+  updateSolidRakeConstraints();
 
   // Show button bar and settings panel, hide core description
   clearBtn.parentElement.style.display = 'flex';
@@ -2808,6 +2852,7 @@ const solidRakeToggle = document.getElementById('solidRakeToggle');
 solidRakeToggle.addEventListener('change', () => {
   solidRakeMode = solidRakeToggle.checked;
   gtag('event', 'solid_rake_toggle', { enabled: solidRakeMode });
+  updateSolidRakeConstraints();
   markCursorDirty();
   requestRender();
   saveSettings();
@@ -2872,6 +2917,7 @@ function loadSettings() {
     if (s.mirrorD !== undefined) { mirrorD = s.mirrorD; mirrorDBtn.classList.toggle('active', mirrorD); }
     if (s.alignCenter !== undefined) { alignCenter = s.alignCenter; alignCenterToggle.checked = alignCenter; }
     if (s.solidRake !== undefined) { solidRakeMode = !!s.solidRake; solidRakeToggle.checked = solidRakeMode; }
+    updateSolidRakeConstraints();
     if (s.fadeMarks !== undefined) {
       fadeMarksToggle.checked = !!s.fadeMarks;
       setMarkFadeEnabled(fadeMarksToggle.checked);
@@ -2917,11 +2963,13 @@ document.getElementById('resetSettingsBtn').addEventListener('click', () => {
   // Reset mirror/alignment
   mirrorV = false; mirrorH = false; mirrorD = false; alignCenter = false;
   solidRakeMode = false;
+  savedSandboxTineCountForSolid = null;
   mirrorVBtn.classList.remove('active');
   mirrorHBtn.classList.remove('active');
   mirrorDBtn.classList.remove('active');
   alignCenterToggle.checked = false;
   solidRakeToggle.checked = false;
+  updateSolidRakeConstraints();
   fadeMarksToggle.checked = false;
   setMarkFadeEnabled(false);
   updateSymmetryLines();
