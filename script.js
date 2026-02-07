@@ -30,6 +30,8 @@ const CORE_QUOTE_REVEAL_THRESHOLD = 0.995;
 const CORE_QUOTE_BLEND_START = 0.85;
 const CORE_QUOTE_DEPTH_RANGE = 1.89;
 const CORE_QUOTE_REVEAL_HEIGHT = 2.0 - CORE_QUOTE_BLEND_START * CORE_QUOTE_DEPTH_RANGE;
+const CORE_DIG_STRENGTH = 0.2; // lower = slower progress to the bottom
+const CORE_SOLID_RAKE_WIDTH_SCALE = 0.7;
 let coreShareShown = false;
 let coreSharePending = false;
 let coreShareImageBlob = null;
@@ -623,7 +625,7 @@ function getTineCount() {
 let rtoCache = null;
 let rtoCacheCount = -1, rtoCacheGap = -1, rtoCacheRadius = -1;
 let sroCache = null;
-let sroCacheCount = -1, sroCacheGap = -1, sroCacheRadius = -1;
+let sroCacheCount = -1, sroCacheGap = -1, sroCacheRadius = -1, sroCacheScale = -1;
 
 function getRakeTineOffsets(tineRadius) {
   const count = cached.tineCount;
@@ -646,18 +648,22 @@ function getRakeTineOffsets(tineRadius) {
 function getRakeHalfWidth(tineRadius) {
   const count = cached.tineCount;
   const gap = cached.gapMul;
-  return ((count - 1) * gap * tineRadius) / 2 + tineRadius;
+  const baseHalfWidth = ((count - 1) * gap * tineRadius) / 2 + tineRadius;
+  if (diggingMode) return baseHalfWidth * CORE_SOLID_RAKE_WIDTH_SCALE;
+  return baseHalfWidth;
 }
 
 function getSolidRakeOffsets(tineRadius) {
   const count = cached.tineCount;
   const gap = cached.gapMul;
-  if (sroCache && count === sroCacheCount && gap === sroCacheGap && tineRadius === sroCacheRadius) {
+  const modeScale = diggingMode ? CORE_SOLID_RAKE_WIDTH_SCALE : 1;
+  if (sroCache && count === sroCacheCount && gap === sroCacheGap && tineRadius === sroCacheRadius && modeScale === sroCacheScale) {
     return sroCache;
   }
   sroCacheCount = count;
   sroCacheGap = gap;
   sroCacheRadius = tineRadius;
+  sroCacheScale = modeScale;
 
   const halfWidth = getRakeHalfWidth(tineRadius);
   if (halfWidth <= tineRadius + 0.001) {
@@ -680,7 +686,7 @@ function getSolidRakeOffsets(tineRadius) {
 }
 
 function getActiveRakeOffsets(tineRadius) {
-  return solidRakeMode ? getSolidRakeOffsets(tineRadius) : getRakeTineOffsets(tineRadius);
+  return isSolidRakeActive() ? getSolidRakeOffsets(tineRadius) : getRakeTineOffsets(tineRadius);
 }
 
 function getOffsetsHalfWidth(offsets, tineRadius) {
@@ -696,6 +702,10 @@ let mirrorH = false;  // horizontal axis (top/bottom)
 let mirrorD = false;  // diagonal axes (8-way)
 let alignCenter = false; // center alignment
 let solidRakeMode = false;
+
+function isSolidRakeActive() {
+  return diggingMode || solidRakeMode;
+}
 
 // --- Helper for alignment ---
 function getPerpAt(x, y) {
@@ -763,6 +773,13 @@ const DEFAULT_HANDLE_LENGTH = 60;
 let rakeHeadInitialized = false;
 
 function updateRakeHead(cursorX, cursorY) {
+  if (diggingMode) {
+    // Core mode uses direct tine placement with no handle lag/rod.
+    rakeHeadX = cursorX;
+    rakeHeadY = cursorY;
+    rakeHeadInitialized = true;
+    return;
+  }
   if (!rakeHeadInitialized) {
     // Snap rake head to cursor on first interaction
     rakeHeadX = cursorX;
@@ -963,7 +980,7 @@ function carveTine(x, y, radius, dirX, dirY) {
         const depthFactor = (2.0 - currentH) / 1.9;
         const hardness = 1.0 + depthFactor * 4.0;
 
-        const removeAmount = ((1.0 - targetHeight) * blendTarget) / hardness;
+        const removeAmount = ((1.0 - targetHeight) * blendTarget * CORE_DIG_STRENGTH) / hardness;
         newH = currentH - removeAmount;
         if (newH < 0.1) newH = 0.1;
         if (newH < deepestHeight) deepestHeight = newH;
@@ -1449,7 +1466,7 @@ function render() {
     const [perpX, perpY] = getPerpAt(rakeHeadX, rakeHeadY);
 
     function drawTinesAt(cx, cy, px, py, strokeAlpha, fillAlpha) {
-      if (solidRakeMode) {
+      if (isSolidRakeActive()) {
         const halfWidth = getOffsetsHalfWidth(offsets, tineRadius);
         const nx = -py;
         const ny = px;
@@ -1504,9 +1521,11 @@ function render() {
       ctx.fill();
     }
 
-    // Primary cursor: tines at rake head, handle from cursor to rake head
+    // Primary cursor: tines at rake head, optional handle in sandbox mode
     drawTinesAt(rakeHeadX, rakeHeadY, perpX, perpY, 0.35, 0.2);
-    drawHandleAt(mouseX, mouseY, rakeHeadX, rakeHeadY, 0.35);
+    if (!diggingMode) {
+      drawHandleAt(mouseX, mouseY, rakeHeadX, rakeHeadY, 0.35);
+    }
 
     // Mirror ghost cursors
     if (mirrorV || mirrorH || mirrorD) {
@@ -1515,7 +1534,7 @@ function render() {
       const gripPts = getSymmetryPoints(mouseX, mouseY, 0, 0, perpX, perpY);
       for (let i = 1; i < pts.length; i++) {
         drawTinesAt(pts[i].x, pts[i].y, pts[i].perpX, pts[i].perpY, 0.15, 0.08);
-        if (i < gripPts.length) {
+        if (!diggingMode && i < gripPts.length) {
           drawHandleAt(gripPts[i].x, gripPts[i].y, pts[i].x, pts[i].y, 0.15);
         }
       }
@@ -1574,7 +1593,7 @@ function markCursorDirty() {
   const [px, py] = getPerpAt(rakeHeadX, rakeHeadY);
 
   function markTinesAt(cx, cy, cpx, cpy) {
-    if (solidRakeMode) {
+    if (isSolidRakeActive()) {
       const halfWidth = getOffsetsHalfWidth(offsets, tineRadius);
       markDirty(cx, cy, halfWidth + tineRadius + 2);
       return;
@@ -1586,18 +1605,20 @@ function markCursorDirty() {
 
   // Mark rake head (tines) dirty
   markTinesAt(rakeHeadX, rakeHeadY, px, py);
-  // Mark grip (cursor) position dirty
-  markDirty(mouseX, mouseY, 5);
-  // Mark handle line between grip and rake head
-  markDirty((mouseX + rakeHeadX) / 2, (mouseY + rakeHeadY) / 2,
-    Math.max(Math.abs(mouseX - rakeHeadX), Math.abs(mouseY - rakeHeadY)) / 2 + 4);
+  if (!diggingMode) {
+    // Mark grip (cursor) position dirty
+    markDirty(mouseX, mouseY, 5);
+    // Mark handle line between grip and rake head
+    markDirty((mouseX + rakeHeadX) / 2, (mouseY + rakeHeadY) / 2,
+      Math.max(Math.abs(mouseX - rakeHeadX), Math.abs(mouseY - rakeHeadY)) / 2 + 4);
+  }
 
   if (mirrorV || mirrorH || mirrorD) {
     const pts = getSymmetryPoints(rakeHeadX, rakeHeadY, 0, 0, px, py);
     const gripPts = getSymmetryPoints(mouseX, mouseY, 0, 0, px, py);
     for (let i = 1; i < pts.length; i++) {
       markTinesAt(pts[i].x, pts[i].y, pts[i].perpX, pts[i].perpY);
-      if (i < gripPts.length) {
+      if (!diggingMode && i < gripPts.length) {
         markDirty(gripPts[i].x, gripPts[i].y, 5);
         markDirty((gripPts[i].x + pts[i].x) / 2, (gripPts[i].y + pts[i].y) / 2,
           Math.max(Math.abs(gripPts[i].x - pts[i].x), Math.abs(gripPts[i].y - pts[i].y)) / 2 + 4);
