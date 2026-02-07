@@ -374,6 +374,7 @@ const SLIDER_CONFIG = [
   { id: 'sizeSlider', key: 'tineRadius', parse: parseInt, onChange() { markCursorDirty(); requestRender(); } },
   { id: 'tineSlider', key: 'tineCount', parse: parseInt, labelId: 'tineLabel', onChange() { markCursorDirty(); requestRender(); } },
   { id: 'gapSlider', key: 'gapMul', parse: parseFloat, onChange() { markCursorDirty(); requestRender(); } },
+  { id: 'handleSlider', key: 'handleLength', parse: parseInt, labelId: 'handleLabel', onChange() { markCursorDirty(); requestRender(); } },
   { id: 'dbgDepth', key: 'depth', parse: parseFloat, labelId: 'dbgDepthLabel', onChange() { tineProfileR = -1; markFullDirty(); requestRender(); } },
   { id: 'dbgRim', key: 'rim', parse: parseFloat, labelId: 'dbgRimLabel', onChange() { tineProfileR = -1; markFullDirty(); requestRender(); } },
   { id: 'dbgLight', key: 'light', parse: parseFloat, labelId: 'dbgLightLabel', onChange() { markFullDirty(); requestRender(); } },
@@ -548,9 +549,7 @@ let lockedAxis = null; // 'x' or 'y' once determined
 
 // --- Handle state (rake head trails behind cursor) ---
 let rakeHeadX = -1, rakeHeadY = -1;
-const handleLength = 60;
-const coreHandleLength = 30;
-const coreHandleStiffness = 0.6;
+const DEFAULT_HANDLE_LENGTH = 60;
 let rakeHeadInitialized = false;
 
 function updateRakeHead(cursorX, cursorY) {
@@ -561,27 +560,16 @@ function updateRakeHead(cursorX, cursorY) {
     rakeHeadInitialized = true;
     return;
   }
-  const activeHandleLength = diggingMode ? coreHandleLength : handleLength;
-  let dx = cursorX - rakeHeadX;
-  let dy = cursorY - rakeHeadY;
-  let dist = Math.sqrt(dx * dx + dy * dy);
-
-  if (diggingMode && dist > 0) {
-    // In core mode, reduce slack so the handle feels short and stiff.
-    rakeHeadX += dx * coreHandleStiffness;
-    rakeHeadY += dy * coreHandleStiffness;
-    dx = cursorX - rakeHeadX;
-    dy = cursorY - rakeHeadY;
-    dist = Math.sqrt(dx * dx + dy * dy);
+  const dx = cursorX - rakeHeadX;
+  const dy = cursorY - rakeHeadY;
+  const dist = Math.sqrt(dx * dx + dy * dy);
+  if (dist > 0.001) {
+    // Enforce a rigid, fixed-length handle regardless of movement mode.
+    const activeHandleLength = cached.handleLength ?? DEFAULT_HANDLE_LENGTH;
+    const correction = dist - activeHandleLength;
+    rakeHeadX += (dx / dist) * correction;
+    rakeHeadY += (dy / dist) * correction;
   }
-
-  if (dist > activeHandleLength) {
-    // Pull rake head toward cursor so distance = activeHandleLength (rigid rod)
-    const pull = dist - activeHandleLength;
-    rakeHeadX += (dx / dist) * pull;
-    rakeHeadY += (dy / dist) * pull;
-  }
-  // If dist <= activeHandleLength, rake head stays put
 }
 
 function getRakePerp() {
