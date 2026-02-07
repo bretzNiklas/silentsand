@@ -1679,7 +1679,39 @@ function getQuoteRevealRatio() {
 
 function captureCoreShareBlob() {
   return new Promise((resolve, reject) => {
-    canvas.toBlob((blob) => {
+    const shareCanvas = document.createElement('canvas');
+    const shareW = canvas.width;
+    const shareH = canvas.height;
+    const barH = Math.max(32, Math.round(shareH * 0.12));
+    shareCanvas.width = shareW;
+    shareCanvas.height = shareH + barH;
+    const shareCtx = shareCanvas.getContext('2d');
+    if (!shareCtx) {
+      reject(new Error('Share canvas context unavailable'));
+      return;
+    }
+
+    // Main garden image.
+    shareCtx.drawImage(canvas, 0, 0);
+
+    // Watermark bar at bottom.
+    const barY = shareH;
+    shareCtx.save();
+    shareCtx.fillStyle = '#1a1a1a';
+    shareCtx.fillRect(0, barY, shareW, barH);
+    shareCtx.fillStyle = 'rgba(90, 74, 53, 0.25)';
+    shareCtx.fillRect(0, barY, shareW, 1);
+    const fontSize = Math.max(14, Math.round(barH * 0.5));
+    shareCtx.font = `300 ${fontSize}px "Segoe UI", system-ui, sans-serif`;
+    shareCtx.fillStyle = 'rgba(220, 195, 155, 0.95)';
+    shareCtx.textAlign = 'center';
+    shareCtx.textBaseline = 'middle';
+    shareCtx.shadowColor = 'rgba(0, 0, 0, 0.4)';
+    shareCtx.shadowBlur = 3;
+    shareCtx.fillText('silentsand.me', shareW / 2, barY + barH / 2);
+    shareCtx.restore();
+
+    shareCanvas.toBlob((blob) => {
       if (blob) resolve(blob);
       else reject(new Error('Canvas snapshot failed'));
     }, 'image/png');
@@ -1748,7 +1780,7 @@ async function ensureCoreShareHostedUrl() {
   setCoreShareStatus('Uploading image for social share...');
   try {
     const url = await startCoreShareUpload();
-    if (url) setCoreShareStatus('Image link ready for X/Facebook.');
+    if (url) setCoreShareStatus('');
     return url || '';
   } catch (err) {
     console.error('Core share upload failed:', err);
@@ -1780,7 +1812,7 @@ async function maybeOpenCoreShareModal(precomputedQuoteRevealRatio = null) {
         .then((url) => {
           if (!url) return;
           if (coreShareModal && coreShareModal.classList.contains('open')) {
-            setCoreShareStatus('Image link ready for X/Facebook.');
+            setCoreShareStatus('');
           }
         })
         .catch((err) => {
