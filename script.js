@@ -622,6 +622,8 @@ function getTineCount() {
 
 let rtoCache = null;
 let rtoCacheCount = -1, rtoCacheGap = -1, rtoCacheRadius = -1;
+let sroCache = null;
+let sroCacheCount = -1, sroCacheGap = -1, sroCacheRadius = -1;
 
 function getRakeTineOffsets(tineRadius) {
   const count = cached.tineCount;
@@ -641,11 +643,59 @@ function getRakeTineOffsets(tineRadius) {
   return offsets;
 }
 
+function getRakeHalfWidth(tineRadius) {
+  const count = cached.tineCount;
+  const gap = cached.gapMul;
+  return ((count - 1) * gap * tineRadius) / 2 + tineRadius;
+}
+
+function getSolidRakeOffsets(tineRadius) {
+  const count = cached.tineCount;
+  const gap = cached.gapMul;
+  if (sroCache && count === sroCacheCount && gap === sroCacheGap && tineRadius === sroCacheRadius) {
+    return sroCache;
+  }
+  sroCacheCount = count;
+  sroCacheGap = gap;
+  sroCacheRadius = tineRadius;
+
+  const halfWidth = getRakeHalfWidth(tineRadius);
+  if (halfWidth <= tineRadius + 0.001) {
+    sroCache = [0];
+    return sroCache;
+  }
+
+  const centerRange = Math.max(0, (halfWidth - tineRadius) * 2);
+  // Dense sampling so the carved stroke behaves as one continuous solid bar.
+  const maxSpacing = Math.max(0.5, tineRadius * 0.5);
+  const sampleCount = Math.max(2, Math.ceil(centerRange / maxSpacing) + 1);
+  const step = centerRange / (sampleCount - 1);
+  const start = -halfWidth + tineRadius;
+  const offsets = new Array(sampleCount);
+  for (let i = 0; i < sampleCount; i++) {
+    offsets[i] = start + i * step;
+  }
+  sroCache = offsets;
+  return offsets;
+}
+
+function getActiveRakeOffsets(tineRadius) {
+  return solidRakeMode ? getSolidRakeOffsets(tineRadius) : getRakeTineOffsets(tineRadius);
+}
+
+function getOffsetsHalfWidth(offsets, tineRadius) {
+  if (!offsets || offsets.length === 0) return tineRadius;
+  const first = offsets[0];
+  const last = offsets[offsets.length - 1];
+  return Math.max(Math.abs(first), Math.abs(last)) + tineRadius;
+}
+
 // --- Mirror symmetry state ---
 let mirrorV = false;  // vertical axis (left/right)
 let mirrorH = false;  // horizontal axis (top/bottom)
 let mirrorD = false;  // diagonal axes (8-way)
 let alignCenter = false; // center alignment
+let solidRakeMode = false;
 
 // --- Helper for alignment ---
 function getPerpAt(x, y) {
@@ -1207,7 +1257,7 @@ function carveRakeSymmetric(x, y, tineRadius, dirX, dirY) {
 }
 
 function carveRake(x, y, tineRadius, dirX, dirY, overridePerpX, overridePerpY) {
-  const offsets = getRakeTineOffsets(tineRadius);
+  const offsets = getActiveRakeOffsets(tineRadius);
   const perpX = overridePerpX !== undefined ? overridePerpX : getRakePerp()[0];
   const perpY = overridePerpY !== undefined ? overridePerpY : getRakePerp()[1];
 
@@ -1395,30 +1445,47 @@ function render() {
   if (onCanvas) {
     ctx.save();
     const tineRadius = cached.tineRadius;
-    const offsets = getRakeTineOffsets(tineRadius);
+    const offsets = getActiveRakeOffsets(tineRadius);
     const [perpX, perpY] = getPerpAt(rakeHeadX, rakeHeadY);
 
     function drawTinesAt(cx, cy, px, py, strokeAlpha, fillAlpha) {
-      ctx.strokeStyle = `rgba(80, 60, 40, ${strokeAlpha})`;
-      ctx.fillStyle = `rgba(80, 60, 40, ${fillAlpha})`;
-      ctx.lineWidth = 1;
-      for (const offset of offsets) {
-        const tx = cx + px * offset;
-        const ty = cy + py * offset;
+      if (solidRakeMode) {
+        const halfWidth = getOffsetsHalfWidth(offsets, tineRadius);
+        const nx = -py;
+        const ny = px;
+        ctx.strokeStyle = `rgba(80, 60, 40, ${strokeAlpha})`;
+        ctx.fillStyle = `rgba(80, 60, 40, ${fillAlpha})`;
+        ctx.lineWidth = 1.5;
         ctx.beginPath();
-        ctx.arc(tx, ty, tineRadius, 0, Math.PI * 2);
+        ctx.moveTo(cx + px * halfWidth + nx * tineRadius, cy + py * halfWidth + ny * tineRadius);
+        ctx.lineTo(cx + px * halfWidth - nx * tineRadius, cy + py * halfWidth - ny * tineRadius);
+        ctx.lineTo(cx - px * halfWidth - nx * tineRadius, cy - py * halfWidth - ny * tineRadius);
+        ctx.lineTo(cx - px * halfWidth + nx * tineRadius, cy - py * halfWidth + ny * tineRadius);
+        ctx.closePath();
         ctx.stroke();
         ctx.fill();
-      }
-      if (offsets.length > 1) {
-        ctx.strokeStyle = `rgba(80, 60, 40, ${strokeAlpha * 0.7})`;
-        ctx.lineWidth = 2;
-        const first = offsets[0];
-        const last = offsets[offsets.length - 1];
-        ctx.beginPath();
-        ctx.moveTo(cx + px * first, cy + py * first);
-        ctx.lineTo(cx + px * last, cy + py * last);
-        ctx.stroke();
+      } else {
+        ctx.strokeStyle = `rgba(80, 60, 40, ${strokeAlpha})`;
+        ctx.fillStyle = `rgba(80, 60, 40, ${fillAlpha})`;
+        ctx.lineWidth = 1;
+        for (const offset of offsets) {
+          const tx = cx + px * offset;
+          const ty = cy + py * offset;
+          ctx.beginPath();
+          ctx.arc(tx, ty, tineRadius, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.fill();
+        }
+        if (offsets.length > 1) {
+          ctx.strokeStyle = `rgba(80, 60, 40, ${strokeAlpha * 0.7})`;
+          ctx.lineWidth = 2;
+          const first = offsets[0];
+          const last = offsets[offsets.length - 1];
+          ctx.beginPath();
+          ctx.moveTo(cx + px * first, cy + py * first);
+          ctx.lineTo(cx + px * last, cy + py * last);
+          ctx.stroke();
+        }
       }
     }
 
@@ -1503,10 +1570,15 @@ function strokeTo(x, y) {
 function markCursorDirty() {
   if (!onCanvas) return;
   const tineRadius = cached.tineRadius;
-  const offsets = getRakeTineOffsets(tineRadius);
+  const offsets = getActiveRakeOffsets(tineRadius);
   const [px, py] = getPerpAt(rakeHeadX, rakeHeadY);
 
   function markTinesAt(cx, cy, cpx, cpy) {
+    if (solidRakeMode) {
+      const halfWidth = getOffsetsHalfWidth(offsets, tineRadius);
+      markDirty(cx, cy, halfWidth + tineRadius + 2);
+      return;
+    }
     for (const offset of offsets) {
       markDirty(cx + cpx * offset, cy + cpy * offset, tineRadius + 2);
     }
@@ -2711,6 +2783,15 @@ alignCenterToggle.addEventListener('change', () => {
   saveSettings();
 });
 
+const solidRakeToggle = document.getElementById('solidRakeToggle');
+solidRakeToggle.addEventListener('change', () => {
+  solidRakeMode = solidRakeToggle.checked;
+  gtag('event', 'solid_rake_toggle', { enabled: solidRakeMode });
+  markCursorDirty();
+  requestRender();
+  saveSettings();
+});
+
 const fadeMarksToggle = document.getElementById('fadeMarksToggle');
 fadeMarksToggle.addEventListener('change', () => {
   setMarkFadeEnabled(fadeMarksToggle.checked);
@@ -2735,6 +2816,7 @@ function saveSettings() {
   settings.mirrorH = mirrorH;
   settings.mirrorD = mirrorD;
   settings.alignCenter = alignCenter;
+  settings.solidRake = solidRakeMode;
   settings.fadeMarks = fadeMarksEnabled;
   const tlModeEl = document.getElementById('tlMode');
   if (tlModeEl) settings.tlMode = tlModeEl.value;
@@ -2768,6 +2850,7 @@ function loadSettings() {
     if (s.mirrorH !== undefined) { mirrorH = s.mirrorH; mirrorHBtn.classList.toggle('active', mirrorH); }
     if (s.mirrorD !== undefined) { mirrorD = s.mirrorD; mirrorDBtn.classList.toggle('active', mirrorD); }
     if (s.alignCenter !== undefined) { alignCenter = s.alignCenter; alignCenterToggle.checked = alignCenter; }
+    if (s.solidRake !== undefined) { solidRakeMode = !!s.solidRake; solidRakeToggle.checked = solidRakeMode; }
     if (s.fadeMarks !== undefined) {
       fadeMarksToggle.checked = !!s.fadeMarks;
       setMarkFadeEnabled(fadeMarksToggle.checked);
@@ -2812,10 +2895,12 @@ document.getElementById('resetSettingsBtn').addEventListener('click', () => {
   }
   // Reset mirror/alignment
   mirrorV = false; mirrorH = false; mirrorD = false; alignCenter = false;
+  solidRakeMode = false;
   mirrorVBtn.classList.remove('active');
   mirrorHBtn.classList.remove('active');
   mirrorDBtn.classList.remove('active');
   alignCenterToggle.checked = false;
+  solidRakeToggle.checked = false;
   fadeMarksToggle.checked = false;
   setMarkFadeEnabled(false);
   updateSymmetryLines();
