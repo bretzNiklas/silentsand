@@ -6,13 +6,26 @@ const redoBtn = document.getElementById('redoBtn');
 
 // --- Digging Mode State ---
 let diggingMode = false;
+let slimeMode = false;
 let savedGardenState = null;   // {h, r, g, b} snapshot
 let savedCoreState = null;     // Persisted core session snapshot while in sandbox
+let savedSlimeState = null;    // Persisted slime session snapshot while in sandbox
+let savedSlimeToolState = null;
 let savedRakeSettings = null;  // slider values snapshot for restoring on dig exit
 let savedRakeAngle = null;     // rotation snapshot for restoring on dig exit
 let quotePixels = null;        // Uint8Array alpha mask: 0..255 text coverage
 let deepestHeight = 2.0;      // tracks minimum sandHeight during dig session
 // (dig mode uses subtractive carving — no accumulator needed)
+let slimeAmount = null;        // Float32Array contamination map (0..1)
+let slimeDisplayAmount = null; // Float32Array visible contamination (smoothed on spawn)
+let slimeInitialMass = 0;
+let slimeRemainingMass = 0;
+let slimeCriticalMass = 0;
+let slimeGameOver = false;
+let slimeSurvivalMs = 0;
+let slimeStartMs = 0;
+let slimeNextSpawnAtMs = 0;
+let slimeTickTimer = null;
 
 // --- Leaderboard State ---
 let leaderboardEntries = [];
@@ -32,6 +45,19 @@ const CORE_QUOTE_DEPTH_RANGE = 1.89;
 const CORE_QUOTE_REVEAL_HEIGHT = 2.0 - CORE_QUOTE_BLEND_START * CORE_QUOTE_DEPTH_RANGE;
 const CORE_DIG_STRENGTH = 0.2; // lower = slower progress to the bottom
 const CORE_SOLID_RAKE_WIDTH_SCALE = 0.7;
+const SLIME_SOLID_RAKE_WIDTH_SCALE = 0.9;
+const SLIME_CLEAN_STRENGTH = 0.55;
+const SLIME_VISUAL_GAIN = 1.7;
+const SLIME_CRITICAL_MASS_RATIO = 0.5;
+const SLIME_INITIAL_SPAWN_INTERVAL_MS = 4200;
+const SLIME_MIN_SPAWN_INTERVAL_MS = 1000;
+const SLIME_SPAWN_ACCEL_MS_PER_SEC = 65;
+const SLIME_TICK_MS = 200;
+const SLIME_SPAWN_FADE_GAIN = 0.22;
+const SLIME_MIN_STEP_FRAC = 0.5;
+const SLIME_FAST_STEP_FRAC = 0.72;
+const SLIME_FAST_DIST_PX = 26;
+const SLIME_MAX_STEPS_PER_SEGMENT = 56;
 let coreShareShown = false;
 let coreSharePending = false;
 let coreShareImageBlob = null;
@@ -41,6 +67,7 @@ let coreShareUploadPromise = null;
 let coreShareUploadGeneration = 0;
 const MOBILE_MEDIA_QUERY = '(max-width: 768px) and (pointer: coarse)';
 const DEFAULT_MARK_FADE_DELAY_SEC = 10;
+const SLIME_MARK_FADE_DELAY_SEC = 1;
 const MARK_FADE_TICK_MS = 100;
 const MARK_FADE_RECOVERY_RATE = 0.18;
 const MARK_FADE_EPS_HEIGHT = 0.003;
@@ -60,6 +87,18 @@ const DIG_RAKE_SETTINGS = {
   spread: 1,
   fwdD: 0.59,
   sideD: 0.66,
+};
+const SLIME_RAKE_SETTINGS = {
+  tineRadius: window.matchMedia(MOBILE_MEDIA_QUERY).matches ? 12 : 9,
+  tineCount: 4,
+  gapMul: 2.1,
+  depth: 0.28,
+  rim: 0.03,
+  blend: 0.72,
+  step: 0.34,
+  spread: 1,
+  fwdD: 0.55,
+  sideD: 0.55,
 };
 
 const ZEN_QUOTES = [
@@ -239,6 +278,10 @@ window.addEventListener('blur', () => heldKeys.clear());
 
 const isMobile = window.matchMedia(MOBILE_MEDIA_QUERY).matches;
 
+function isChallengeMode() {
+  return diggingMode || slimeMode;
+}
+
 // --- Cached slider values (optimization #3) ---
 const cached = {};
 
@@ -404,8 +447,18 @@ function captureMarkFadeBaseline() {
   clearMarkFadeTracking();
 }
 
+function isMarkFadeEnabledForCurrentMode() {
+  if (diggingMode) return false;
+  return slimeMode || fadeMarksEnabled;
+}
+
+function getMarkFadeDelayMs() {
+  const sec = slimeMode ? SLIME_MARK_FADE_DELAY_SEC : (cached.fadeDelaySec ?? DEFAULT_MARK_FADE_DELAY_SEC);
+  return sec * 1000;
+}
+
 function activateExistingMarksForFade() {
-  if (!fadeMarksEnabled || !fadeBaseHeight || diggingMode) return;
+  if (!isMarkFadeEnabledForCurrentMode() || !fadeBaseHeight) return;
   clearMarkFadeTracking();
   const now = performance.now();
   for (let idx = 0; idx < totalPixels; idx++) {
@@ -421,9 +474,9 @@ function activateExistingMarksForFade() {
 }
 
 function applyMarkFadeStep() {
-  if (!fadeMarksEnabled || diggingMode || !fadeTouchedAt || fadeActiveIdx.length === 0) return;
+  if (!isMarkFadeEnabledForCurrentMode() || !fadeTouchedAt || fadeActiveIdx.length === 0) return;
   const now = performance.now();
-  const fadeDelayMs = (cached.fadeDelaySec ?? DEFAULT_MARK_FADE_DELAY_SEC) * 1000;
+  const fadeDelayMs = getMarkFadeDelayMs();
   let write = 0;
   let changed = false;
   let minX = W, minY = H, maxX = -1, maxY = -1;
@@ -502,7 +555,7 @@ function setMarkFadeEnabled(enabled) {
   fadeMarksEnabled = !!enabled;
   const fadeDelaySlider = document.getElementById('fadeDelaySlider');
   if (fadeDelaySlider) fadeDelaySlider.disabled = !fadeMarksEnabled;
-  if (fadeMarksEnabled && !diggingMode) {
+  if (isMarkFadeEnabledForCurrentMode()) {
     startMarkFadeTicker();
     activateExistingMarksForFade();
   } else {
@@ -512,7 +565,7 @@ function setMarkFadeEnabled(enabled) {
 }
 
 function trackFadePixel(idx) {
-  if (!fadeMarksEnabled || diggingMode || !fadeTouchedAt) return;
+  if (!isMarkFadeEnabledForCurrentMode() || !fadeTouchedAt) return;
   fadeTouchedAt[idx] = performance.now();
   if (!fadeActiveMask[idx]) {
     fadeActiveMask[idx] = 1;
@@ -573,7 +626,7 @@ function updateSolidRakeConstraints() {
   const shouldLockTines = isSolidRakeActive();
 
   if (shouldLockTines) {
-    if (!diggingMode && savedSandboxTineCountForSolid === null) {
+    if (!isChallengeMode() && savedSandboxTineCountForSolid === null) {
       savedSandboxTineCountForSolid = el.value;
     }
     if (el.value !== '4') {
@@ -639,7 +692,7 @@ function generateNoiseMap() {
 }
 
 function clearSand() {
-  if (diggingMode) return;
+  if (isChallengeMode()) return;
   gtag('event', 'clear_sand');
   saveState(); // Save state before clearing
   tlResumeForInteraction();
@@ -689,13 +742,14 @@ function getRakeHalfWidth(tineRadius) {
   const gap = cached.gapMul;
   const baseHalfWidth = ((count - 1) * gap * tineRadius) / 2 + tineRadius;
   if (diggingMode) return baseHalfWidth * CORE_SOLID_RAKE_WIDTH_SCALE;
+  if (slimeMode) return baseHalfWidth * SLIME_SOLID_RAKE_WIDTH_SCALE;
   return baseHalfWidth;
 }
 
 function getSolidRakeOffsets(tineRadius) {
   const count = cached.tineCount;
   const gap = cached.gapMul;
-  const modeScale = diggingMode ? CORE_SOLID_RAKE_WIDTH_SCALE : 1;
+  const modeScale = diggingMode ? CORE_SOLID_RAKE_WIDTH_SCALE : slimeMode ? SLIME_SOLID_RAKE_WIDTH_SCALE : 1;
   if (sroCache && count === sroCacheCount && gap === sroCacheGap && tineRadius === sroCacheRadius && modeScale === sroCacheScale) {
     return sroCache;
   }
@@ -743,13 +797,13 @@ let alignCenter = false; // center alignment
 let solidRakeMode = false;
 
 function isSolidRakeActive() {
-  return diggingMode || solidRakeMode;
+  return isChallengeMode() || solidRakeMode;
 }
 
 // --- Helper for alignment ---
 function getPerpAt(x, y) {
-  // In core mode, keep rake orientation fixed to manual wheel rotation.
-  if (diggingMode) {
+  // In challenge modes, keep rake orientation fixed to manual wheel rotation.
+  if (isChallengeMode()) {
     return getRakePerp();
   }
   if (alignCenter) {
@@ -812,8 +866,8 @@ const DEFAULT_HANDLE_LENGTH = 60;
 let rakeHeadInitialized = false;
 
 function updateRakeHead(cursorX, cursorY) {
-  if (diggingMode) {
-    // Core mode uses direct tine placement with no handle lag/rod.
+  if (isChallengeMode()) {
+    // Challenge modes use direct tine placement with no handle lag/rod.
     rakeHeadX = cursorX;
     rakeHeadY = cursorY;
     rakeHeadInitialized = true;
@@ -1033,6 +1087,16 @@ function carveTine(x, y, radius, dirX, dirY) {
       } else {
         newH = currentH * blendInv + targetHeight * blendTarget;
       }
+
+      if (slimeMode && slimeAmount && targetHeight >= 0) {
+        const curSlime = slimeAmount[idx];
+        if (curSlime > 0) {
+          slimeAmount[idx] = 0;
+          if (slimeDisplayAmount) slimeDisplayAmount[idx] = 0;
+          slimeRemainingMass -= curSlime;
+        }
+      }
+
       if (currentH > newH) {
         const displaced = currentH - newH;
         dispIdx[dispCount] = idx;
@@ -1047,12 +1111,14 @@ function carveTine(x, y, radius, dirX, dirY) {
     }
   }
 
+  if (slimeMode && slimeRemainingMass < 0) slimeRemainingMass = 0;
+
   // Mark the carve area dirty
   markDirty(ix, iy, r + 2);
 
   // Pass 2: distribute displaced sand using flat gaussian kernel arrays
-  // In dig mode, skip deposits — displaced sand vanishes (no rim buildup)
-  if (!diggingMode) {
+  // Challenge modes skip deposits to keep carving responsive.
+  if (!isChallengeMode()) {
   const fwdDist = r * cached.fwdD;
   const sideDist = r * cached.sideD;
   const spreadR = cached.spread;
@@ -1135,7 +1201,7 @@ function carveTine(x, y, radius, dirX, dirY) {
       markDirty(cx, cy, depositMarkR);
     }
   }
-  } // end if (!diggingMode)
+  } // end if (!isChallengeMode())
 
   // Spawn sand particles from displaced pixels
   spawnParticles(ix, iy, ndx, ndy, dispCount);
@@ -1143,6 +1209,7 @@ function carveTine(x, y, radius, dirX, dirY) {
 
 // --- Particle functions ---
 function spawnParticles(x, y, dirX, dirY, dispCount) {
+  if (isChallengeMode()) return;
   const intensity = cached.particles;
   if (dispCount === 0 || intensity === 0) return;
   // Sample a fraction of displaced pixels, scaled by intensity slider
@@ -1386,6 +1453,8 @@ function render() {
   const d = imageDataBuf;
   const lightX = -0.7;
   const lightY = -0.7;
+  let slimeVisualPending = false;
+  const hadDirty = !dirtyEmpty;
 
   // Cache slider values for this frame
   const lightMul = cached.light;
@@ -1456,11 +1525,42 @@ function render() {
           const heightBrightness = 0.82 + 0.18 * (h < 0 ? 0 : h > 2 ? 2 : h);
           const shade = lighting * heightBrightness;
           const noise = noiseMap[idx] * shade * noiseMul;
+          let outR = baseR * shade + noise;
+          let outG = baseG * shade + noise;
+          let outB = baseB * shade + noise;
+
+          if (slimeMode && slimeAmount) {
+            let slime = slimeAmount[idx];
+            if (slimeDisplayAmount) {
+              let display = slimeDisplayAmount[idx];
+              if (display > slime) {
+                display = slime; // cleaned slime disappears immediately
+              } else if (display < slime) {
+                const delta = slime - display;
+                display += Math.max(0.0015, delta * SLIME_SPAWN_FADE_GAIN);
+                if (display > slime) display = slime;
+                if (display + 0.0005 < slime) slimeVisualPending = true;
+              }
+              slimeDisplayAmount[idx] = display;
+              slime = display;
+            }
+            if (slime > 0.001) {
+              const t = Math.min(1, slime * SLIME_VISUAL_GAIN);
+              const mix = t * 0.78;
+              const glow = 0.9 + lighting * 0.1;
+              const slimeR = 65 * glow;
+              const slimeG = 195 * glow;
+              const slimeB = 82 * glow;
+              outR = outR * (1 - mix) + slimeR * mix;
+              outG = outG * (1 - mix) + slimeG * mix;
+              outB = outB * (1 - mix) + slimeB * mix;
+            }
+          }
 
           // Uint8ClampedArray auto-clamps to [0, 255] — no Math.max/min needed
-          d[pi]     = baseR * shade + noise;
-          d[pi + 1] = baseG * shade + noise;
-          d[pi + 2] = baseB * shade + noise;
+          d[pi]     = outR;
+          d[pi + 1] = outG;
+          d[pi + 2] = outB;
           d[pi + 3] = 255;
         }
       }
@@ -1562,7 +1662,7 @@ function render() {
 
     // Primary cursor: tines at rake head, optional handle in sandbox mode
     drawTinesAt(rakeHeadX, rakeHeadY, perpX, perpY, 0.35, 0.2);
-    if (!diggingMode) {
+    if (!isChallengeMode()) {
       drawHandleAt(mouseX, mouseY, rakeHeadX, rakeHeadY, 0.35);
     }
 
@@ -1573,7 +1673,7 @@ function render() {
       const gripPts = getSymmetryPoints(mouseX, mouseY, 0, 0, perpX, perpY);
       for (let i = 1; i < pts.length; i++) {
         drawTinesAt(pts[i].x, pts[i].y, pts[i].perpX, pts[i].perpY, 0.15, 0.08);
-        if (!diggingMode && i < gripPts.length) {
+        if (!isChallengeMode() && i < gripPts.length) {
           drawHandleAt(gripPts[i].x, gripPts[i].y, pts[i].x, pts[i].y, 0.15);
         }
       }
@@ -1584,7 +1684,13 @@ function render() {
   // Draw watermark for timelapse recording
   tlDrawWatermark();
 
+  if (slimeMode && slimeVisualPending && hadDirty) {
+    markDirtyRect(rMinX, rMinY, rMaxX, rMaxY);
+    requestRender();
+  }
+
   if (diggingMode) updateDepthPill();
+  if (slimeMode) updateSlimePill();
 
   // Update performance readout
   const renderEnd = performance.now();
@@ -1593,6 +1699,7 @@ function render() {
 
 // --- Stroke handling ---
 function strokeTo(x, y) {
+  if (slimeMode && slimeGameOver) return;
   const tineRadius = cached.tineRadius;
   let stepFrac = cached.step;
   // Increase step linearly when rake is large with many tines (performance)
@@ -1606,10 +1713,20 @@ function strokeTo(x, y) {
   const dist = Math.sqrt(dx * dx + dy * dy);
   if (dist < 1) return;
 
+  if (slimeMode) {
+    stepFrac = Math.max(stepFrac, SLIME_MIN_STEP_FRAC);
+    if (dist >= SLIME_FAST_DIST_PX) {
+      stepFrac = Math.max(stepFrac, SLIME_FAST_STEP_FRAC);
+    }
+  }
+
   strokeDX = dx;
   strokeDY = dy;
 
-  const steps = Math.max(1, Math.floor(dist / Math.max(1, tineRadius * stepFrac)));
+  let steps = Math.max(1, Math.floor(dist / Math.max(1, tineRadius * stepFrac)));
+  if (slimeMode && steps > SLIME_MAX_STEPS_PER_SEGMENT) {
+    steps = SLIME_MAX_STEPS_PER_SEGMENT;
+  }
 
   const carveStart = performance.now();
   for (let i = 0; i <= steps; i++) {
@@ -1644,7 +1761,7 @@ function markCursorDirty() {
 
   // Mark rake head (tines) dirty
   markTinesAt(rakeHeadX, rakeHeadY, px, py);
-  if (!diggingMode) {
+  if (!isChallengeMode()) {
     // Mark grip (cursor) position dirty
     markDirty(mouseX, mouseY, 5);
     // Mark handle line between grip and rake head
@@ -1657,7 +1774,7 @@ function markCursorDirty() {
     const gripPts = getSymmetryPoints(mouseX, mouseY, 0, 0, px, py);
     for (let i = 1; i < pts.length; i++) {
       markTinesAt(pts[i].x, pts[i].y, pts[i].perpX, pts[i].perpY);
-      if (!diggingMode && i < gripPts.length) {
+      if (!isChallengeMode() && i < gripPts.length) {
         markDirty(gripPts[i].x, gripPts[i].y, 5);
         markDirty((gripPts[i].x + pts[i].x) / 2, (gripPts[i].y + pts[i].y) / 2,
           Math.max(Math.abs(gripPts[i].x - pts[i].x), Math.abs(gripPts[i].y - pts[i].y)) / 2 + 4);
@@ -1701,8 +1818,9 @@ function onDocMouseUp() {
 canvas.addEventListener('mousedown', (e) => {
   if (e.target !== canvas) return;
   if (introPlaying) { abortIntro(); return; }
+  if (slimeMode && slimeGameOver) return;
   gtag('event', 'stroke_start', { input: 'mouse' });
-  saveState(); // Save state before stroke
+  if (!isChallengeMode()) saveState(); // Save state before stroke
   drawing = true;
   tlResumeForInteraction();
   const [x, y] = getPos(e);
@@ -1736,6 +1854,7 @@ canvas.addEventListener('mousemove', (e) => {
 canvas.addEventListener('wheel', (e) => {
   e.preventDefault();
   if (introPlaying) return;
+  if (slimeMode) return;
   const dir = e.deltaY > 0 ? -1 : 1;
   const wheelSliderKey = heldKeys.has('t') ? 'tineCount' : heldKeys.has('g') ? 'gapMul' : heldKeys.has('s') ? 'tineRadius' : null;
   if (wheelSliderKey === 'tineCount' && isSolidRakeActive()) {
@@ -1773,8 +1892,9 @@ canvas.addEventListener('touchstart', (e) => {
   if (e.target !== canvas) return;
   e.preventDefault();
   if (introPlaying) { abortIntro(); return; }
+  if (slimeMode && slimeGameOver) return;
   gtag('event', 'stroke_start', { input: 'touch' });
-  saveState(); // Save state before stroke
+  if (!isChallengeMode()) saveState(); // Save state before stroke
   drawing = true;
   tlResumeForInteraction();
   const [x, y] = getPos(e);
@@ -1815,7 +1935,7 @@ canvas.addEventListener('touchend', (e) => {
 
 clearBtn.addEventListener('click', clearSand);
 
-// --- Digging Mode ---
+// --- Challenge Modes ---
 function buildQuotePixels() {
   const quote = getDailyQuote();
   const offscreen = document.createElement('canvas');
@@ -1883,6 +2003,199 @@ function buildQuotePixels() {
   }
 }
 
+function updateSlimePill() {
+  if (!slimeMode) return;
+  const threatPct = totalPixels > 0
+    ? Math.max(0, Math.min(100, (slimeRemainingMass / totalPixels) * 100))
+    : 0;
+  if (isMobile) clearedFill.style.width = threatPct + '%';
+  else clearedFill.style.height = threatPct + '%';
+  depthPillText.textContent = 'Threat';
+
+  if (!slimeGameOver && slimeCriticalMass > 0 && slimeRemainingMass >= slimeCriticalMass) {
+    slimeGameOver = true;
+    slimeSurvivalMs = Math.max(0, Date.now() - slimeStartMs);
+    stopSlimeTicking();
+    updateSlimeTimerLabel();
+    setSlimeStatusMessage('Critical mass reached. You lost.', true);
+    gtag('event', 'slime_critical_mass_reached', { survival_sec: Math.floor(slimeSurvivalMs / 1000) });
+  }
+}
+
+function ensureSlimeBuffer() {
+  if (!slimeAmount || slimeAmount.length !== totalPixels) {
+    slimeAmount = new Float32Array(totalPixels);
+  } else {
+    slimeAmount.fill(0);
+  }
+  if (!slimeDisplayAmount || slimeDisplayAmount.length !== totalPixels) {
+    slimeDisplayAmount = new Float32Array(totalPixels);
+  } else {
+    slimeDisplayAmount.fill(0);
+  }
+}
+
+function addSlimePatch(cx, cy, radius, strength) {
+  const minX = Math.max(0, Math.floor(cx - radius));
+  const maxX = Math.min(W - 1, Math.ceil(cx + radius));
+  const minY = Math.max(0, Math.floor(cy - radius));
+  const maxY = Math.min(H - 1, Math.ceil(cy + radius));
+  const invRadius = 1 / Math.max(1, radius);
+
+  let addedMass = 0;
+  for (let y = minY; y <= maxY; y++) {
+    const row = y * W;
+    const dy = (y - cy) * invRadius;
+    for (let x = minX; x <= maxX; x++) {
+      const dx = (x - cx) * invRadius;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist >= 1) continue;
+      const falloff = (1 - dist);
+      const add = strength * falloff * falloff;
+      const idx = row + x;
+      const prev = slimeAmount[idx];
+      const next = Math.min(1, prev + add);
+      slimeAmount[idx] = next;
+      addedMass += (next - prev);
+    }
+  }
+  return addedMass;
+}
+
+function formatSurvivalTime(ms) {
+  const totalSec = Math.max(0, Math.floor(ms / 1000));
+  const h = Math.floor(totalSec / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  const s = totalSec % 60;
+  if (h > 0) {
+    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+  }
+  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+}
+
+function updateSlimeTimerLabel() {
+  if (!slimeTimer) return;
+  slimeTimer.textContent = `Survived ${formatSurvivalTime(slimeSurvivalMs)}`;
+}
+
+function setSlimeStatusMessage(message, isError = false) {
+  if (!slimeStatus) return;
+  slimeStatus.textContent = message;
+  slimeStatus.style.color = isError ? '#d67878' : '#8bcf70';
+}
+
+function getSlimeSpawnIntervalMs(elapsedMs) {
+  const elapsedSec = elapsedMs / 1000;
+  return Math.max(
+    SLIME_MIN_SPAWN_INTERVAL_MS,
+    SLIME_INITIAL_SPAWN_INTERVAL_MS - elapsedSec * SLIME_SPAWN_ACCEL_MS_PER_SEC
+  );
+}
+
+function spawnEscalationSlime(elapsedMs) {
+  if (!slimeAmount || !slimeDisplayAmount) return;
+  const minDim = Math.min(W, H);
+  const elapsedSec = elapsedMs / 1000;
+  const extraPatches = (elapsedSec > 12 && Math.random() < 0.55 ? 1 : 0) +
+    (elapsedSec > 40 && Math.random() < 0.4 ? 1 : 0) +
+    (elapsedSec > 100 && Math.random() < 0.25 ? 1 : 0);
+  const patchCount = 1 + extraPatches;
+  let addedMass = 0;
+  let minX = W, minY = H, maxX = -1, maxY = -1;
+  const sizeGrowth = Math.min(0.12, elapsedSec / 420);
+
+  for (let i = 0; i < patchCount; i++) {
+    const radius = minDim * (0.04 + Math.random() * 0.055 + sizeGrowth);
+    const cx = radius + Math.random() * (W - radius * 2);
+    const cy = radius + Math.random() * (H - radius * 2);
+    const strength = Math.min(1, 0.66 + Math.random() * 0.3 + Math.min(0.3, elapsedSec / 130));
+    addedMass += addSlimePatch(cx, cy, radius, strength);
+    const x0 = Math.max(0, Math.floor(cx - radius - 2));
+    const y0 = Math.max(0, Math.floor(cy - radius - 2));
+    const x1 = Math.min(W - 1, Math.ceil(cx + radius + 2));
+    const y1 = Math.min(H - 1, Math.ceil(cy + radius + 2));
+    if (x0 < minX) minX = x0;
+    if (y0 < minY) minY = y0;
+    if (x1 > maxX) maxX = x1;
+    if (y1 > maxY) maxY = y1;
+  }
+
+  if (addedMass > 0) {
+    slimeRemainingMass += addedMass;
+    if (maxX >= 0) {
+      markDirtyRect(minX, minY, maxX, maxY);
+    }
+    requestRender();
+  }
+}
+
+function stopSlimeTicking() {
+  if (slimeTickTimer === null) return;
+  clearInterval(slimeTickTimer);
+  slimeTickTimer = null;
+}
+
+function startSlimeTicking(nextSpawnInMs = null) {
+  stopSlimeTicking();
+  slimeStartMs = Date.now() - slimeSurvivalMs;
+  const delay = nextSpawnInMs === null ? getSlimeSpawnIntervalMs(slimeSurvivalMs) : Math.max(200, nextSpawnInMs);
+  slimeNextSpawnAtMs = Date.now() + delay;
+  updateSlimeTimerLabel();
+
+  slimeTickTimer = setInterval(() => {
+    if (!slimeMode || slimeGameOver) return;
+    const now = Date.now();
+    slimeSurvivalMs = Math.max(0, now - slimeStartMs);
+    updateSlimeTimerLabel();
+
+    let loops = 0;
+    while (now >= slimeNextSpawnAtMs && loops < 4) {
+      spawnEscalationSlime(slimeSurvivalMs);
+      slimeNextSpawnAtMs += getSlimeSpawnIntervalMs(slimeSurvivalMs);
+      loops++;
+    }
+    updateSlimePill();
+  }, SLIME_TICK_MS);
+}
+
+function spawnSlimeRound() {
+  ensureSlimeBuffer();
+  const minDim = Math.min(W, H);
+  const patchCount = isMobile ? 4 : 5;
+
+  for (let i = 0; i < patchCount; i++) {
+    const radius = minDim * (0.055 + Math.random() * 0.065);
+    const cx = radius + Math.random() * (W - radius * 2);
+    const cy = radius + Math.random() * (H - radius * 2);
+    const strength = 0.7 + Math.random() * 0.28;
+    addSlimePatch(cx, cy, radius, strength);
+  }
+
+  // Keep blobs local while preserving soft edges (avoid hard radial cutoff).
+  for (let i = 0; i < totalPixels; i++) {
+    const v = slimeAmount[i];
+    if (v < 0.05) {
+      slimeAmount[i] = 0;
+      continue;
+    }
+    const t = Math.min(1, (v - 0.05) / 0.15);
+    const eased = t * t * (3 - 2 * t); // smoothstep
+    slimeAmount[i] = v * eased;
+  }
+
+  slimeInitialMass = 0;
+  for (let i = 0; i < totalPixels; i++) slimeInitialMass += slimeAmount[i];
+  if (slimeInitialMass < 1) {
+    addSlimePatch(W * 0.5, H * 0.5, Math.min(W, H) * 0.14, 0.9);
+    slimeInitialMass = 0;
+    for (let i = 0; i < totalPixels; i++) slimeInitialMass += slimeAmount[i];
+  }
+  slimeRemainingMass = slimeInitialMass;
+  slimeCriticalMass = totalPixels * SLIME_CRITICAL_MASS_RATIO;
+  slimeGameOver = false;
+  slimeSurvivalMs = 0;
+}
+
 function applySliderValues(values) {
   for (const key of Object.keys(values)) {
     const entry = sliderEls[key];
@@ -1900,6 +2213,11 @@ function applySliderValues(values) {
 
 const settingsBtn = document.getElementById('settingsBtn');
 const settingsPanel = document.getElementById('settingsPanel');
+const buttonBar = clearBtn.parentElement;
+const coreDesc = document.getElementById('coreDesc');
+const slimeDesc = document.getElementById('slimeDesc');
+const slimeStatus = document.getElementById('slimeStatus');
+const slimeTimer = document.getElementById('slimeTimer');
 
 // --- Leaderboard Functions ---
 const leaderboardPanel = document.getElementById('leaderboardPanel');
@@ -2452,6 +2770,12 @@ if (coreCheatBtn) {
   coreCheatBtn.addEventListener('click', debugClearToCore);
 }
 
+function setActiveModeButton(mode) {
+  document.querySelectorAll('.mode-btn').forEach((b) => {
+    b.classList.toggle('active', b.dataset.mode === mode);
+  });
+}
+
 function enterDiggingMode() {
   gtag('event', 'mode_switch', { mode: 'core' });
   stopMarkFadeTicker();
@@ -2477,9 +2801,11 @@ function enterDiggingMode() {
   }
 
   // Hide button bar and settings panel, show core description
-  clearBtn.parentElement.style.display = 'none';
+  buttonBar.style.display = 'none';
   settingsPanel.style.display = 'none';
-  document.getElementById('coreDesc').style.display = '';
+  depthPill.classList.remove('slime');
+  coreDesc.style.display = '';
+  slimeDesc.style.display = 'none';
   if (isMobile) leaderboardPanel.style.display = '';
 
   const canRestoreCoreState = !!(
@@ -2539,13 +2865,13 @@ function enterDiggingMode() {
 
   diggingMode = true;
   updateSolidRakeConstraints();
+  setActiveModeButton('core');
 
   markFullDirty();
   requestRender();
 }
 
 function exitDiggingMode() {
-  gtag('event', 'mode_switch', { mode: 'zen' });
   resetCoreShareState();
   savedCoreState = {
     w: W,
@@ -2558,15 +2884,18 @@ function exitDiggingMode() {
     reachedBottom,
     quotePixels: quotePixels ? new Uint8Array(quotePixels) : null
   };
-  sandHeight.set(savedGardenState.h);
-  sandR.set(savedGardenState.r);
-  sandG.set(savedGardenState.g);
-  sandB.set(savedGardenState.b);
-  savedGardenState = null;
+  if (savedGardenState) {
+    sandHeight.set(savedGardenState.h);
+    sandR.set(savedGardenState.r);
+    sandG.set(savedGardenState.g);
+    sandB.set(savedGardenState.b);
+    savedGardenState = null;
+  }
   quotePixels = null;
 
   diggingMode = false;
   depthPill.style.display = 'none';
+  depthPill.classList.remove('slime');
   leaderboardHint.style.display = 'none';
   leaderboardSubmit.style.display = 'none';
   // Clear undo/redo from digging session
@@ -2588,10 +2917,11 @@ function exitDiggingMode() {
   }
   updateSolidRakeConstraints();
 
-  // Show button bar and settings panel, hide core description
-  clearBtn.parentElement.style.display = 'flex';
+  // Show button bar and settings panel, hide mode descriptions
+  buttonBar.style.display = 'flex';
   settingsPanel.style.display = '';
-  document.getElementById('coreDesc').style.display = 'none';
+  coreDesc.style.display = 'none';
+  slimeDesc.style.display = 'none';
   if (isMobile) leaderboardPanel.style.display = 'none';
 
   if (fadeMarksEnabled) {
@@ -2599,10 +2929,200 @@ function exitDiggingMode() {
     activateExistingMarksForFade();
   }
 
-  // Sync mode selector buttons
-  document.querySelectorAll('.mode-btn').forEach(b => {
-    b.classList.toggle('active', b.dataset.mode === 'zen');
-  });
+  markFullDirty();
+  requestRender();
+}
+
+function enterSlimeMode() {
+  gtag('event', 'mode_switch', { mode: 'slime' });
+  stopMarkFadeTicker();
+  clearMarkFadeTracking();
+  resetCoreShareState();
+  savedGardenState = getCurrentState();
+  savedRakeAngle = rakeAngle;
+  rakeAngle = Math.PI / 2;
+  undoStack.length = 0;
+  redoStack.length = 0;
+  updateHistoryBtns();
+
+  savedRakeSettings = {};
+  for (const key of Object.keys(SLIME_RAKE_SETTINGS)) {
+    savedRakeSettings[key] = sliderEls[key].el.value;
+  }
+  applySliderValues(SLIME_RAKE_SETTINGS);
+  for (const key of Object.keys(SLIME_RAKE_SETTINGS)) {
+    sliderEls[key].el.disabled = true;
+  }
+
+  savedSlimeToolState = {
+    mirrorV,
+    mirrorH,
+    mirrorD,
+    alignCenter,
+    solidRakeMode
+  };
+  mirrorV = false;
+  mirrorH = false;
+  mirrorD = false;
+  alignCenter = false;
+  solidRakeMode = false;
+  mirrorVBtn.classList.remove('active');
+  mirrorHBtn.classList.remove('active');
+  mirrorDBtn.classList.remove('active');
+  alignCenterToggle.checked = false;
+  solidRakeToggle.checked = false;
+  updateSymmetryLines();
+
+  buttonBar.style.display = 'none';
+  settingsPanel.style.display = 'none';
+  coreDesc.style.display = 'none';
+  slimeDesc.style.display = '';
+  leaderboardPanel.style.display = 'none';
+  depthPill.classList.add('slime');
+
+  const canRestoreSlimeState = !!(
+    savedSlimeState &&
+    !savedSlimeState.slimeGameOver &&
+    savedSlimeState.w === W &&
+    savedSlimeState.h === H &&
+    savedSlimeState.sandHeight &&
+    savedSlimeState.sandHeight.length === totalPixels &&
+    savedSlimeState.slimeAmount &&
+    savedSlimeState.slimeAmount.length === totalPixels
+  );
+  let restoredNextSpawnInMs = null;
+
+  if (canRestoreSlimeState) {
+    sandHeight.set(savedSlimeState.sandHeight);
+    sandR.set(savedSlimeState.sandR);
+    sandG.set(savedSlimeState.sandG);
+    sandB.set(savedSlimeState.sandB);
+    slimeAmount = new Float32Array(savedSlimeState.slimeAmount);
+    slimeDisplayAmount = savedSlimeState.slimeDisplayAmount &&
+      savedSlimeState.slimeDisplayAmount.length === totalPixels
+      ? new Float32Array(savedSlimeState.slimeDisplayAmount)
+      : new Float32Array(slimeAmount);
+    slimeInitialMass = savedSlimeState.slimeInitialMass;
+    slimeRemainingMass = savedSlimeState.slimeRemainingMass;
+    slimeCriticalMass = totalPixels * SLIME_CRITICAL_MASS_RATIO;
+    slimeGameOver = !!savedSlimeState.slimeGameOver;
+    slimeSurvivalMs = Math.max(0, savedSlimeState.slimeSurvivalMs || 0);
+    restoredNextSpawnInMs = savedSlimeState.nextSpawnInMs ?? null;
+  } else {
+    if (savedSlimeState) savedSlimeState = null;
+    initSand();
+    for (let i = 0; i < totalPixels; i++) {
+      sandHeight[i] += (Math.random() - 0.5) * 0.18;
+      sandHeight[i] = Math.max(0.2, Math.min(1.5, sandHeight[i]));
+    }
+    generateNoiseMap();
+    spawnSlimeRound();
+  }
+
+  depthBar.style.opacity = '0';
+  clearedBar.style.opacity = '1';
+  depthPill.style.display = 'flex';
+
+  slimeMode = true;
+  captureMarkFadeBaseline();
+  startMarkFadeTicker();
+  updateSolidRakeConstraints();
+  if (slimeGameOver) {
+    setSlimeStatusMessage('Critical mass reached. You lost.', true);
+    stopSlimeTicking();
+  } else {
+    setSlimeStatusMessage('Contain the slime. Red line at 50% is game over.');
+    startSlimeTicking(restoredNextSpawnInMs);
+  }
+  updateSlimeTimerLabel();
+  updateSlimePill();
+  setActiveModeButton('slime');
+
+  markFullDirty();
+  requestRender();
+}
+
+function exitSlimeMode() {
+  const now = Date.now();
+  if (!slimeGameOver && slimeMode) {
+    slimeSurvivalMs = Math.max(0, now - slimeStartMs);
+  }
+  const nextSpawnInMs = slimeGameOver ? 0 : Math.max(0, slimeNextSpawnAtMs - now);
+  savedSlimeState = {
+    w: W,
+    h: H,
+    sandHeight: new Float32Array(sandHeight),
+    sandR: new Float32Array(sandR),
+    sandG: new Float32Array(sandG),
+    sandB: new Float32Array(sandB),
+    slimeAmount: slimeAmount ? new Float32Array(slimeAmount) : new Float32Array(totalPixels),
+    slimeDisplayAmount: slimeDisplayAmount ? new Float32Array(slimeDisplayAmount) : new Float32Array(totalPixels),
+    slimeInitialMass,
+    slimeRemainingMass,
+    slimeCriticalMass,
+    slimeGameOver,
+    slimeSurvivalMs,
+    nextSpawnInMs
+  };
+  stopSlimeTicking();
+  if (savedGardenState) {
+    sandHeight.set(savedGardenState.h);
+    sandR.set(savedGardenState.r);
+    sandG.set(savedGardenState.g);
+    sandB.set(savedGardenState.b);
+    savedGardenState = null;
+  }
+
+  slimeMode = false;
+  depthPill.style.display = 'none';
+  depthPill.classList.remove('slime');
+  setSlimeStatusMessage('Infestation detected');
+  if (slimeTimer) slimeTimer.textContent = 'Survived 00:00';
+  undoStack.length = 0;
+  redoStack.length = 0;
+  updateHistoryBtns();
+
+  if (savedRakeSettings) {
+    applySliderValues(savedRakeSettings);
+    savedRakeSettings = null;
+  }
+  if (savedRakeAngle !== null) {
+    rakeAngle = savedRakeAngle;
+    savedRakeAngle = null;
+  }
+  if (savedSlimeToolState) {
+    mirrorV = savedSlimeToolState.mirrorV;
+    mirrorH = savedSlimeToolState.mirrorH;
+    mirrorD = savedSlimeToolState.mirrorD;
+    alignCenter = savedSlimeToolState.alignCenter;
+    solidRakeMode = savedSlimeToolState.solidRakeMode;
+    savedSlimeToolState = null;
+    mirrorVBtn.classList.toggle('active', mirrorV);
+    mirrorHBtn.classList.toggle('active', mirrorH);
+    mirrorDBtn.classList.toggle('active', mirrorD);
+    alignCenterToggle.checked = alignCenter;
+    solidRakeToggle.checked = solidRakeMode;
+    updateSymmetryLines();
+  }
+  for (const key of Object.keys(SLIME_RAKE_SETTINGS)) {
+    sliderEls[key].el.disabled = false;
+  }
+  updateSolidRakeConstraints();
+
+  buttonBar.style.display = 'flex';
+  settingsPanel.style.display = '';
+  coreDesc.style.display = 'none';
+  slimeDesc.style.display = 'none';
+  if (isMobile) leaderboardPanel.style.display = 'none';
+  else leaderboardPanel.style.display = '';
+
+  if (fadeMarksEnabled) {
+    startMarkFadeTicker();
+    activateExistingMarksForFade();
+  } else {
+    stopMarkFadeTicker();
+    clearMarkFadeTracking();
+  }
 
   markFullDirty();
   requestRender();
@@ -2654,20 +3174,39 @@ if (isMobile) {
 }
 
 // --- Mode Selector ---
+function switchMode(mode) {
+  if (mode === 'core') {
+    if (slimeMode) exitSlimeMode();
+    if (!diggingMode) {
+      const dot = document.querySelector('.pulse-dot');
+      if (dot) dot.style.display = 'none';
+      localStorage.setItem('ssCoreVisited', 'true');
+      enterDiggingMode();
+    } else {
+      setActiveModeButton('core');
+    }
+    return;
+  }
+
+  if (mode === 'slime') {
+    if (diggingMode) exitDiggingMode();
+    if (!slimeMode) enterSlimeMode();
+    else setActiveModeButton('slime');
+    return;
+  }
+
+  if (diggingMode || slimeMode) {
+    gtag('event', 'mode_switch', { mode: 'zen' });
+  }
+  if (diggingMode) exitDiggingMode();
+  if (slimeMode) exitSlimeMode();
+  setActiveModeButton('zen');
+}
+
 document.querySelector('.mode-selector').addEventListener('click', (e) => {
   const btn = e.target.closest('.mode-btn');
   if (!btn || btn.classList.contains('active') || introPlaying) return;
-  document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
-  btn.classList.add('active');
-  if (btn.dataset.mode === 'core') {
-    // Hide pulse dot permanently
-    const dot = document.querySelector('.pulse-dot');
-    if (dot) dot.style.display = 'none';
-    localStorage.setItem('ssCoreVisited', 'true');
-    enterDiggingMode();
-  } else {
-    exitDiggingMode();
-  }
+  switchMode(btn.dataset.mode || 'zen');
 });
 
 // Hide pulse dot if already visited Core mode
@@ -3045,8 +3584,10 @@ async function loadFromBrowser(id) {
       const data = request.result;
       if (!data) return reject("Save not found");
 
-      // Exit digging mode if active
+      // Exit challenge modes if active
       if (diggingMode) exitDiggingMode();
+      if (slimeMode) exitSlimeMode();
+      setActiveModeButton('zen');
 
       // Use existing initGarden logic
       initGarden(data.w, data.h);
