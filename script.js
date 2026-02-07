@@ -38,6 +38,13 @@ let coreShareHostedUrl = '';
 let coreShareUploadPromise = null;
 let coreShareUploadGeneration = 0;
 const MOBILE_MEDIA_QUERY = '(max-width: 768px) and (pointer: coarse)';
+const DEFAULT_MARK_FADE_DELAY_SEC = 10;
+const MARK_FADE_TICK_MS = 100;
+const MARK_FADE_RECOVERY_RATE = 0.18;
+const MARK_FADE_EPS_HEIGHT = 0.003;
+const MARK_FADE_EPS_COLOR = 0.5;
+let fadeMarksEnabled = false;
+let fadeTickTimer = null;
 
 // Fixed rake settings for digging mode
 const DIG_RAKE_SETTINGS = {
@@ -237,6 +244,9 @@ let W, H;
 let totalPixels;
 let sandHeight, sandR, sandG, sandB, noiseMap;
 let imageData, imageDataBuf;
+let fadeTouchedAt, fadeActiveMask;
+let fadeBaseHeight, fadeBaseR, fadeBaseG, fadeBaseB;
+const fadeActiveIdx = [];
 
 function initGarden(width, height) {
   W = width;
@@ -250,6 +260,7 @@ function initGarden(width, height) {
   sandG = new Float32Array(totalPixels);
   sandB = new Float32Array(totalPixels);
   noiseMap = new Float32Array(totalPixels);
+  initMarkFadeBuffers();
   
   imageData = ctx.createImageData(W, H);
   imageDataBuf = imageData.data;
@@ -338,6 +349,10 @@ function markDirty(x, y, radius) {
   const y0 = Math.max(0, Math.floor(y) - r);
   const x1 = Math.min(W - 1, Math.ceil(x) + r);
   const y1 = Math.min(H - 1, Math.ceil(y) + r);
+  markDirtyRect(x0, y0, x1, y1);
+}
+
+function markDirtyRect(x0, y0, x1, y1) {
   if (dirtyEmpty) {
     dirtyMinX = x0; dirtyMinY = y0;
     dirtyMaxX = x1; dirtyMaxY = y1;
@@ -360,6 +375,149 @@ function resetDirty() {
   dirtyEmpty = true;
 }
 
+function initMarkFadeBuffers() {
+  fadeTouchedAt = new Float64Array(totalPixels);
+  fadeActiveMask = new Uint8Array(totalPixels);
+  fadeBaseHeight = new Float32Array(totalPixels);
+  fadeBaseR = new Float32Array(totalPixels);
+  fadeBaseG = new Float32Array(totalPixels);
+  fadeBaseB = new Float32Array(totalPixels);
+  fadeActiveIdx.length = 0;
+}
+
+function clearMarkFadeTracking() {
+  if (!fadeActiveMask) return;
+  for (let i = 0; i < fadeActiveIdx.length; i++) {
+    fadeActiveMask[fadeActiveIdx[i]] = 0;
+  }
+  fadeActiveIdx.length = 0;
+}
+
+function captureMarkFadeBaseline() {
+  if (!fadeBaseHeight) return;
+  fadeBaseHeight.set(sandHeight);
+  fadeBaseR.set(sandR);
+  fadeBaseG.set(sandG);
+  fadeBaseB.set(sandB);
+  clearMarkFadeTracking();
+}
+
+function activateExistingMarksForFade() {
+  if (!fadeMarksEnabled || !fadeBaseHeight || diggingMode) return;
+  clearMarkFadeTracking();
+  const now = performance.now();
+  for (let idx = 0; idx < totalPixels; idx++) {
+    if (Math.abs(sandHeight[idx] - fadeBaseHeight[idx]) > MARK_FADE_EPS_HEIGHT ||
+        Math.abs(sandR[idx] - fadeBaseR[idx]) > MARK_FADE_EPS_COLOR ||
+        Math.abs(sandG[idx] - fadeBaseG[idx]) > MARK_FADE_EPS_COLOR ||
+        Math.abs(sandB[idx] - fadeBaseB[idx]) > MARK_FADE_EPS_COLOR) {
+      fadeActiveMask[idx] = 1;
+      fadeTouchedAt[idx] = now;
+      fadeActiveIdx.push(idx);
+    }
+  }
+}
+
+function applyMarkFadeStep() {
+  if (!fadeMarksEnabled || diggingMode || !fadeTouchedAt || fadeActiveIdx.length === 0) return;
+  const now = performance.now();
+  const fadeDelayMs = (cached.fadeDelaySec ?? DEFAULT_MARK_FADE_DELAY_SEC) * 1000;
+  let write = 0;
+  let changed = false;
+  let minX = W, minY = H, maxX = -1, maxY = -1;
+
+  for (let i = 0; i < fadeActiveIdx.length; i++) {
+    const idx = fadeActiveIdx[i];
+    const age = now - fadeTouchedAt[idx];
+    let keep = true;
+
+    if (age >= fadeDelayMs) {
+      const targetH = fadeBaseHeight[idx];
+      const targetR = fadeBaseR[idx];
+      const targetG = fadeBaseG[idx];
+      const targetB = fadeBaseB[idx];
+
+      const curH = sandHeight[idx];
+      const curR = sandR[idx];
+      const curG = sandG[idx];
+      const curB = sandB[idx];
+
+      const nextH = curH + (targetH - curH) * MARK_FADE_RECOVERY_RATE;
+      const nextR = curR + (targetR - curR) * MARK_FADE_RECOVERY_RATE;
+      const nextG = curG + (targetG - curG) * MARK_FADE_RECOVERY_RATE;
+      const nextB = curB + (targetB - curB) * MARK_FADE_RECOVERY_RATE;
+
+      sandHeight[idx] = nextH;
+      sandR[idx] = nextR;
+      sandG[idx] = nextG;
+      sandB[idx] = nextB;
+      changed = true;
+
+      const px = idx % W;
+      const py = (idx - px) / W;
+      if (px < minX) minX = px;
+      if (py < minY) minY = py;
+      if (px > maxX) maxX = px;
+      if (py > maxY) maxY = py;
+
+      if (Math.abs(nextH - targetH) < MARK_FADE_EPS_HEIGHT &&
+          Math.abs(nextR - targetR) < MARK_FADE_EPS_COLOR &&
+          Math.abs(nextG - targetG) < MARK_FADE_EPS_COLOR &&
+          Math.abs(nextB - targetB) < MARK_FADE_EPS_COLOR) {
+        sandHeight[idx] = targetH;
+        sandR[idx] = targetR;
+        sandG[idx] = targetG;
+        sandB[idx] = targetB;
+        fadeActiveMask[idx] = 0;
+        keep = false;
+      }
+    }
+
+    if (keep) {
+      fadeActiveIdx[write++] = idx;
+    }
+  }
+
+  fadeActiveIdx.length = write;
+  if (changed && maxX >= 0) {
+    markDirtyRect(minX, minY, maxX, maxY);
+    requestRender();
+  }
+}
+
+function startMarkFadeTicker() {
+  if (fadeTickTimer !== null) return;
+  fadeTickTimer = setInterval(applyMarkFadeStep, MARK_FADE_TICK_MS);
+}
+
+function stopMarkFadeTicker() {
+  if (fadeTickTimer === null) return;
+  clearInterval(fadeTickTimer);
+  fadeTickTimer = null;
+}
+
+function setMarkFadeEnabled(enabled) {
+  fadeMarksEnabled = !!enabled;
+  const fadeDelaySlider = document.getElementById('fadeDelaySlider');
+  if (fadeDelaySlider) fadeDelaySlider.disabled = !fadeMarksEnabled;
+  if (fadeMarksEnabled && !diggingMode) {
+    startMarkFadeTicker();
+    activateExistingMarksForFade();
+  } else {
+    stopMarkFadeTicker();
+    clearMarkFadeTracking();
+  }
+}
+
+function trackFadePixel(idx) {
+  if (!fadeMarksEnabled || diggingMode || !fadeTouchedAt) return;
+  fadeTouchedAt[idx] = performance.now();
+  if (!fadeActiveMask[idx]) {
+    fadeActiveMask[idx] = 1;
+    fadeActiveIdx.push(idx);
+  }
+}
+
 // --- rAF render coalescing (optimization #1) ---
 let renderScheduled = false;
 function requestRender() {
@@ -375,6 +533,7 @@ const SLIDER_CONFIG = [
   { id: 'tineSlider', key: 'tineCount', parse: parseInt, labelId: 'tineLabel', onChange() { markCursorDirty(); requestRender(); } },
   { id: 'gapSlider', key: 'gapMul', parse: parseFloat, onChange() { markCursorDirty(); requestRender(); } },
   { id: 'handleSlider', key: 'handleLength', parse: parseInt, labelId: 'handleLabel', onChange() { markCursorDirty(); requestRender(); } },
+  { id: 'fadeDelaySlider', key: 'fadeDelaySec', parse: parseFloat, labelId: 'fadeDelayLabel' },
   { id: 'dbgDepth', key: 'depth', parse: parseFloat, labelId: 'dbgDepthLabel', onChange() { tineProfileR = -1; markFullDirty(); requestRender(); } },
   { id: 'dbgRim', key: 'rim', parse: parseFloat, labelId: 'dbgRimLabel', onChange() { tineProfileR = -1; markFullDirty(); requestRender(); } },
   { id: 'dbgLight', key: 'light', parse: parseFloat, labelId: 'dbgLightLabel', onChange() { markFullDirty(); requestRender(); } },
@@ -450,6 +609,7 @@ function clearSand() {
     sandHeight[i] = Math.max(0.1, Math.min(1.5, sandHeight[i]));
   }
   generateNoiseMap();
+  captureMarkFadeBaseline();
   markFullDirty();
   requestRender();
   tlScheduleIdlePause();
@@ -776,6 +936,7 @@ function carveTine(x, y, radius, dirX, dirY) {
         dispSrcB[dispCount] = sandB[idx];
         dispCount++;
         sandHeight[idx] = newH;
+        trackFadePixel(idx);
       }
     }
   }
@@ -861,6 +1022,7 @@ function carveTine(x, y, radius, dirX, dirY) {
           sandG[cellIdx] = (sandG[cellIdx] * destH + sG * added) / totalH;
           sandB[cellIdx] = (sandB[cellIdx] * destH + sB * added) / totalH;
         }
+        if (Math.abs(totalH - destH) > 0.0001) trackFadePixel(cellIdx);
         sandHeight[cellIdx] = totalH;
       }
 
@@ -2157,6 +2319,8 @@ if (coreCheatBtn) {
 
 function enterDiggingMode() {
   gtag('event', 'mode_switch', { mode: 'core' });
+  stopMarkFadeTicker();
+  clearMarkFadeTracking();
   resetCoreShareState();
   savedGardenState = getCurrentState();
   savedRakeAngle = rakeAngle;
@@ -2292,6 +2456,11 @@ function exitDiggingMode() {
   settingsPanel.style.display = '';
   document.getElementById('coreDesc').style.display = 'none';
   if (isMobile) leaderboardPanel.style.display = 'none';
+
+  if (fadeMarksEnabled) {
+    startMarkFadeTicker();
+    activateExistingMarksForFade();
+  }
 
   // Sync mode selector buttons
   document.querySelectorAll('.mode-btn').forEach(b => {
@@ -2542,6 +2711,13 @@ alignCenterToggle.addEventListener('change', () => {
   saveSettings();
 });
 
+const fadeMarksToggle = document.getElementById('fadeMarksToggle');
+fadeMarksToggle.addEventListener('change', () => {
+  setMarkFadeEnabled(fadeMarksToggle.checked);
+  gtag('event', 'fade_marks_toggle', { enabled: fadeMarksEnabled });
+  saveSettings();
+});
+
 // --- Settings Persistence ---
 function saveSettings() {
   const settings = {};
@@ -2559,6 +2735,7 @@ function saveSettings() {
   settings.mirrorH = mirrorH;
   settings.mirrorD = mirrorD;
   settings.alignCenter = alignCenter;
+  settings.fadeMarks = fadeMarksEnabled;
   const tlModeEl = document.getElementById('tlMode');
   if (tlModeEl) settings.tlMode = tlModeEl.value;
   localStorage.setItem('zenGardenSettings', JSON.stringify(settings));
@@ -2591,6 +2768,10 @@ function loadSettings() {
     if (s.mirrorH !== undefined) { mirrorH = s.mirrorH; mirrorHBtn.classList.toggle('active', mirrorH); }
     if (s.mirrorD !== undefined) { mirrorD = s.mirrorD; mirrorDBtn.classList.toggle('active', mirrorD); }
     if (s.alignCenter !== undefined) { alignCenter = s.alignCenter; alignCenterToggle.checked = alignCenter; }
+    if (s.fadeMarks !== undefined) {
+      fadeMarksToggle.checked = !!s.fadeMarks;
+      setMarkFadeEnabled(fadeMarksToggle.checked);
+    }
     if (s.tlMode !== undefined) { const tlModeEl = document.getElementById('tlMode'); if (tlModeEl) tlModeEl.value = s.tlMode; }
     updateSymmetryLines();
   } catch (e) {
@@ -2635,6 +2816,8 @@ document.getElementById('resetSettingsBtn').addEventListener('click', () => {
   mirrorHBtn.classList.remove('active');
   mirrorDBtn.classList.remove('active');
   alignCenterToggle.checked = false;
+  fadeMarksToggle.checked = false;
+  setMarkFadeEnabled(false);
   updateSymmetryLines();
   // Reset guide overlay
   guideToggle.checked = false;
@@ -2719,6 +2902,7 @@ async function loadFromBrowser(id) {
       sandB.set(data.sandB);
       
       generateNoiseMap();
+      captureMarkFadeBaseline();
       undoStack.length = 0;
       redoStack.length = 0;
       updateHistoryBtns();
