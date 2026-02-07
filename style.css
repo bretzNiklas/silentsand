@@ -467,7 +467,7 @@
     position: absolute;
     left: 0;
     right: 0;
-    top: 50%;
+    top: 75%;
     height: 2px;
     background: #d95f5f;
     box-shadow: 0 0 4px rgba(217, 95, 95, 0.45);
@@ -724,6 +724,20 @@
     color: #c2a67d;
     background: #3a3228;
   }
+  .slime-timer-badge {
+    display: inline-block;
+    margin: 10px 0 0;
+    padding: 7px 14px;
+    color: #efffdc;
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    background: linear-gradient(180deg, #2e4b22 0%, #23391a 100%);
+    border: 1px solid #8bcf70;
+    border-radius: 999px;
+    box-shadow: 0 0 12px rgba(139, 207, 112, 0.2);
+  }
 
   /* Core share modal */
   .core-share-modal {
@@ -957,7 +971,7 @@
     .threat-critical-marker {
       top: 0;
       bottom: 0;
-      left: 50%;
+      left: 25%;
       right: auto;
       width: 2px;
       height: 100%;
@@ -1180,6 +1194,12 @@
     #coreDesc p,
     #slimeDesc p {
       font-size: 13px !important;
+    }
+    .slime-timer-badge {
+      margin-top: 8px;
+      padding: 6px 12px;
+      font-size: 13px;
+      letter-spacing: 0.08em;
     }
     .core-debug-btn {
       min-height: 28px;

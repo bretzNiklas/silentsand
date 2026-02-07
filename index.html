@@ -99,9 +99,9 @@
 <div class="bookmark-banner" style="position: fixed; top: 8px; right: 12px; color: #c2a67d; font-size: 12px; font-weight: 600; opacity: 0.45; letter-spacing: 0.03em; z-index: 10;">Ctrl+D to bookmark this site :)</div>
 <h1>SilentSand.me</h1>
 <div class="mode-selector">
+  <button class="mode-btn" data-mode="slime">Slime Cleanup</button>
   <button class="mode-btn active" data-mode="zen">Sandbox</button>
   <button class="mode-btn" data-mode="core">To the Core <span class="pulse-dot"></span></button>
-  <button class="mode-btn" data-mode="slime">Slime Cleanup</button>
 </div>
 <div class="canvas-row">
   <div class="reminder-box" id="reminderBox">
@@ -165,9 +165,9 @@
   </div>
 </div>
 <div id="slimeDesc" style="display: none; max-width: 540px; margin: 16px auto 0; text-align: center; padding: 16px 24px; border-top: 1px solid #5a4a3544; border-bottom: 1px solid #5a4a3544;">
-  <p style="color: #e8d5b7; font-size: 15px; line-height: 1.7; letter-spacing: 0.04em; margin: 0; font-weight: 300;">A strange alien slime has spread across your garden.<br>Use the fixed solid rake to scrub every patch clean.<br>No tuning, no tricks, just cleanup.</p>
+  <p id="slimeTimer" class="slime-timer-badge">Survived 00:00</p>
   <p id="slimeStatus" style="color: #8bcf70; font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; margin: 10px 0 0;">Infestation detected</p>
-  <p id="slimeTimer" style="color: #e8d5b7; font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; margin: 8px 0 0;">Survived 00:00</p>
+  <p style="color: #e8d5b7; font-size: 15px; line-height: 1.7; letter-spacing: 0.04em; margin: 10px 0 0; font-weight: 300;">A strange alien slime has spread across your garden.<br>Use the fixed solid rake to scrub every patch clean.<br>No tuning, no tricks, just cleanup.</p>
 </div>
 <div id="coreShareModal" class="core-share-modal" aria-hidden="true">
   <div class="core-share-dialog" role="dialog" aria-modal="true" aria-labelledby="coreShareTitle">

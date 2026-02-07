@@ -26,6 +26,7 @@ let slimeSurvivalMs = 0;
 let slimeStartMs = 0;
 let slimeNextSpawnAtMs = 0;
 let slimeTickTimer = null;
+let slimeNextMilestoneSec = 15;
 
 // --- Leaderboard State ---
 let leaderboardEntries = [];
@@ -48,16 +49,19 @@ const CORE_SOLID_RAKE_WIDTH_SCALE = 0.7;
 const SLIME_SOLID_RAKE_WIDTH_SCALE = 0.9;
 const SLIME_CLEAN_STRENGTH = 0.55;
 const SLIME_VISUAL_GAIN = 1.7;
-const SLIME_CRITICAL_MASS_RATIO = 0.5;
-const SLIME_INITIAL_SPAWN_INTERVAL_MS = 4200;
-const SLIME_MIN_SPAWN_INTERVAL_MS = 1000;
-const SLIME_SPAWN_ACCEL_MS_PER_SEC = 65;
+const SLIME_CRITICAL_MASS_RATIO = 0.25;
+const SLIME_INITIAL_SPAWN_INTERVAL_MS = 3600;
+const SLIME_MIN_SPAWN_INTERVAL_MS = 700;
+const SLIME_SPAWN_ACCEL_MS_PER_SEC = 90;
 const SLIME_TICK_MS = 200;
 const SLIME_SPAWN_FADE_GAIN = 0.22;
 const SLIME_MIN_STEP_FRAC = 0.5;
 const SLIME_FAST_STEP_FRAC = 0.72;
 const SLIME_FAST_DIST_PX = 26;
 const SLIME_MAX_STEPS_PER_SEGMENT = 56;
+const SLIME_SPAWN_OCCUPIED_THRESHOLD = 0.02;
+const SLIME_SPAWN_RETRY_ATTEMPTS = 24;
+const SLIME_SURVIVAL_MILESTONE_SEC = 15;
 let coreShareShown = false;
 let coreSharePending = false;
 let coreShareImageBlob = null;
@@ -2005,9 +2009,7 @@ function buildQuotePixels() {
 
 function updateSlimePill() {
   if (!slimeMode) return;
-  const threatPct = totalPixels > 0
-    ? Math.max(0, Math.min(100, (slimeRemainingMass / totalPixels) * 100))
-    : 0;
+  const threatPct = getSlimeThreatPct();
   if (isMobile) clearedFill.style.width = threatPct + '%';
   else clearedFill.style.height = threatPct + '%';
   depthPillText.textContent = 'Threat';
@@ -2018,7 +2020,11 @@ function updateSlimePill() {
     stopSlimeTicking();
     updateSlimeTimerLabel();
     setSlimeStatusMessage('Critical mass reached. You lost.', true);
-    gtag('event', 'slime_critical_mass_reached', { survival_sec: Math.floor(slimeSurvivalMs / 1000) });
+    gtag('event', 'slime_critical_mass_reached', {
+      survival_sec: Math.floor(slimeSurvivalMs / 1000),
+      threat_pct: Number(threatPct.toFixed(1)),
+      critical_pct: Math.round(SLIME_CRITICAL_MASS_RATIO * 100)
+    });
   }
 }
 
@@ -2062,6 +2068,37 @@ function addSlimePatch(cx, cy, radius, strength) {
   return addedMass;
 }
 
+function isSlimeSpawnAreaClear(cx, cy, radius) {
+  if (!slimeAmount) return true;
+  const samples = [
+    [0, 0],
+    [0.55, 0], [-0.55, 0], [0, 0.55], [0, -0.55],
+    [0.82, 0], [-0.82, 0], [0, 0.82], [0, -0.82],
+    [0.58, 0.58], [0.58, -0.58], [-0.58, 0.58], [-0.58, -0.58]
+  ];
+
+  for (let i = 0; i < samples.length; i++) {
+    const sx = Math.round(cx + samples[i][0] * radius);
+    const sy = Math.round(cy + samples[i][1] * radius);
+    if (sx < 0 || sx >= W || sy < 0 || sy >= H) return false;
+    const idx = sy * W + sx;
+    if (slimeAmount[idx] > SLIME_SPAWN_OCCUPIED_THRESHOLD) return false;
+  }
+  return true;
+}
+
+function trySpawnSlimePatch(radius, strength, attempts = SLIME_SPAWN_RETRY_ATTEMPTS) {
+  if (!slimeAmount) return null;
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    const cx = radius + Math.random() * (W - radius * 2);
+    const cy = radius + Math.random() * (H - radius * 2);
+    if (!isSlimeSpawnAreaClear(cx, cy, radius)) continue;
+    const addedMass = addSlimePatch(cx, cy, radius, strength);
+    return { cx, cy, radius, addedMass };
+  }
+  return null;
+}
+
 function formatSurvivalTime(ms) {
   const totalSec = Math.max(0, Math.floor(ms / 1000));
   const h = Math.floor(totalSec / 3600);
@@ -2084,6 +2121,11 @@ function setSlimeStatusMessage(message, isError = false) {
   slimeStatus.style.color = isError ? '#d67878' : '#8bcf70';
 }
 
+function getSlimeThreatPct() {
+  if (totalPixels <= 0) return 0;
+  return Math.max(0, Math.min(100, (slimeRemainingMass / totalPixels) * 100));
+}
+
 function getSlimeSpawnIntervalMs(elapsedMs) {
   const elapsedSec = elapsedMs / 1000;
   return Math.max(
@@ -2096,24 +2138,24 @@ function spawnEscalationSlime(elapsedMs) {
   if (!slimeAmount || !slimeDisplayAmount) return;
   const minDim = Math.min(W, H);
   const elapsedSec = elapsedMs / 1000;
-  const extraPatches = (elapsedSec > 12 && Math.random() < 0.55 ? 1 : 0) +
-    (elapsedSec > 40 && Math.random() < 0.4 ? 1 : 0) +
-    (elapsedSec > 100 && Math.random() < 0.25 ? 1 : 0);
-  const patchCount = 1 + extraPatches;
+  const extraPatches = (elapsedSec > 8 && Math.random() < 0.65 ? 1 : 0) +
+    (elapsedSec > 25 && Math.random() < 0.5 ? 1 : 0) +
+    (elapsedSec > 60 && Math.random() < 0.35 ? 1 : 0);
+  const patchCount = 2 + extraPatches;
   let addedMass = 0;
   let minX = W, minY = H, maxX = -1, maxY = -1;
-  const sizeGrowth = Math.min(0.12, elapsedSec / 420);
+  const sizeGrowth = Math.min(0.14, elapsedSec / 300);
 
   for (let i = 0; i < patchCount; i++) {
     const radius = minDim * (0.04 + Math.random() * 0.055 + sizeGrowth);
-    const cx = radius + Math.random() * (W - radius * 2);
-    const cy = radius + Math.random() * (H - radius * 2);
-    const strength = Math.min(1, 0.66 + Math.random() * 0.3 + Math.min(0.3, elapsedSec / 130));
-    addedMass += addSlimePatch(cx, cy, radius, strength);
-    const x0 = Math.max(0, Math.floor(cx - radius - 2));
-    const y0 = Math.max(0, Math.floor(cy - radius - 2));
-    const x1 = Math.min(W - 1, Math.ceil(cx + radius + 2));
-    const y1 = Math.min(H - 1, Math.ceil(cy + radius + 2));
+    const strength = Math.min(1, 0.7 + Math.random() * 0.3 + Math.min(0.35, elapsedSec / 100));
+    const patch = trySpawnSlimePatch(radius, strength);
+    if (!patch || patch.addedMass <= 0) continue;
+    addedMass += patch.addedMass;
+    const x0 = Math.max(0, Math.floor(patch.cx - patch.radius - 2));
+    const y0 = Math.max(0, Math.floor(patch.cy - patch.radius - 2));
+    const x1 = Math.min(W - 1, Math.ceil(patch.cx + patch.radius + 2));
+    const y1 = Math.min(H - 1, Math.ceil(patch.cy + patch.radius + 2));
     if (x0 < minX) minX = x0;
     if (y0 < minY) minY = y0;
     if (x1 > maxX) maxX = x1;
@@ -2140,6 +2182,7 @@ function startSlimeTicking(nextSpawnInMs = null) {
   slimeStartMs = Date.now() - slimeSurvivalMs;
   const delay = nextSpawnInMs === null ? getSlimeSpawnIntervalMs(slimeSurvivalMs) : Math.max(200, nextSpawnInMs);
   slimeNextSpawnAtMs = Date.now() + delay;
+  slimeNextMilestoneSec = (Math.floor(slimeSurvivalMs / 1000 / SLIME_SURVIVAL_MILESTONE_SEC) + 1) * SLIME_SURVIVAL_MILESTONE_SEC;
   updateSlimeTimerLabel();
 
   slimeTickTimer = setInterval(() => {
@@ -2147,6 +2190,14 @@ function startSlimeTicking(nextSpawnInMs = null) {
     const now = Date.now();
     slimeSurvivalMs = Math.max(0, now - slimeStartMs);
     updateSlimeTimerLabel();
+    const survivalSec = Math.floor(slimeSurvivalMs / 1000);
+    while (survivalSec >= slimeNextMilestoneSec) {
+      gtag('event', 'slime_survival_milestone', {
+        survival_sec: slimeNextMilestoneSec,
+        threat_pct: Number(getSlimeThreatPct().toFixed(1))
+      });
+      slimeNextMilestoneSec += SLIME_SURVIVAL_MILESTONE_SEC;
+    }
 
     let loops = 0;
     while (now >= slimeNextSpawnAtMs && loops < 4) {
@@ -2165,10 +2216,9 @@ function spawnSlimeRound() {
 
   for (let i = 0; i < patchCount; i++) {
     const radius = minDim * (0.055 + Math.random() * 0.065);
-    const cx = radius + Math.random() * (W - radius * 2);
-    const cy = radius + Math.random() * (H - radius * 2);
     const strength = 0.7 + Math.random() * 0.28;
-    addSlimePatch(cx, cy, radius, strength);
+    const patch = trySpawnSlimePatch(radius, strength, SLIME_SPAWN_RETRY_ATTEMPTS + 8);
+    if (!patch) continue;
   }
 
   // Keep blobs local while preserving soft edges (avoid hard radial cutoff).
@@ -3018,6 +3068,7 @@ function enterSlimeMode() {
     generateNoiseMap();
     spawnSlimeRound();
   }
+  const resumedSession = canRestoreSlimeState && slimeSurvivalMs > 0;
 
   depthBar.style.opacity = '0';
   clearedBar.style.opacity = '1';
@@ -3031,9 +3082,14 @@ function enterSlimeMode() {
     setSlimeStatusMessage('Critical mass reached. You lost.', true);
     stopSlimeTicking();
   } else {
-    setSlimeStatusMessage('Contain the slime. Red line at 50% is game over.');
+    setSlimeStatusMessage('Contain the slime. Red line at 25% is game over.');
     startSlimeTicking(restoredNextSpawnInMs);
   }
+  gtag('event', 'slime_session_start', {
+    resumed: resumedSession,
+    threat_pct: Number(getSlimeThreatPct().toFixed(1)),
+    critical_pct: Math.round(SLIME_CRITICAL_MASS_RATIO * 100)
+  });
   updateSlimeTimerLabel();
   updateSlimePill();
   setActiveModeButton('slime');
@@ -3047,6 +3103,12 @@ function exitSlimeMode() {
   if (!slimeGameOver && slimeMode) {
     slimeSurvivalMs = Math.max(0, now - slimeStartMs);
   }
+  gtag('event', 'slime_session_end', {
+    result: slimeGameOver ? 'game_over' : 'exit',
+    survival_sec: Math.floor(slimeSurvivalMs / 1000),
+    threat_pct: Number(getSlimeThreatPct().toFixed(1)),
+    critical_pct: Math.round(SLIME_CRITICAL_MASS_RATIO * 100)
+  });
   const nextSpawnInMs = slimeGameOver ? 0 : Math.max(0, slimeNextSpawnAtMs - now);
   savedSlimeState = {
     w: W,
