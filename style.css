@@ -490,16 +490,19 @@
     gap: 8px;
   }
   .reminder-box-status {
+    display: block;
     color: #5a4a35;
     font-size: 10px;
     letter-spacing: 0.05em;
     line-height: 1.3;
+    min-height: 2.6em;
   }
   .reminder-box-help {
     color: #5a4a3577;
     font-size: 10px;
     line-height: 1.4;
     margin: 0;
+    min-height: 2.8em;
   }
 
   /* Reminder time picker */
@@ -538,6 +541,7 @@
     transform: translateY(-50%);
     right: -280px;
     width: 220px;
+    min-height: 360px;
     flex-shrink: 0;
     display: flex;
     flex-direction: column;
@@ -558,6 +562,7 @@
     display: flex;
     flex-direction: column;
     gap: 4px;
+    min-height: 220px;
     max-height: 320px;
     overflow-y: auto;
     overflow-x: hidden;

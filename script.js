@@ -3307,10 +3307,9 @@ function initRemindersTab() {
 // --- Init ---
 setupSliders();
 loadSettings();
-initGarden(
-  Math.min(1120, isMobile ? window.innerWidth : window.innerWidth - 40),
-  Math.min(630, isMobile ? Math.floor(window.innerHeight * 0.65) : window.innerHeight - 120)
-);
+const initialGardenWidth = isMobile ? Math.min(1120, window.innerWidth) : canvas.width;
+const initialGardenHeight = isMobile ? Math.min(630, Math.floor(window.innerHeight * 0.65)) : canvas.height;
+initGarden(initialGardenWidth, initialGardenHeight);
 rebuildGaussKernel();
 clearSand();
 playIntroAnimation();
