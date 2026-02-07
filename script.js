@@ -17,6 +17,14 @@ let deepestHeight = 2.0;      // tracks minimum sandHeight during dig session
 let leaderboardEntries = [];
 let leaderboardPlayerId = null;
 const LEADERBOARD_API = 'https://us-central1-silentsands.cloudfunctions.net';
+const APP_CONFIG = window.SILENT_SAND_CONFIG || {};
+const CORE_SHARE_DEFAULT_URL = (APP_CONFIG.coreShareLinkBaseUrl || `${window.location.origin}${window.location.pathname}`).trim();
+const CORE_SHARE_CLOUDINARY_CLOUD_NAME = (APP_CONFIG.cloudinaryCloudName || '').trim();
+const CORE_SHARE_CLOUDINARY_UPLOAD_PRESET = (APP_CONFIG.cloudinaryUploadPreset || '').trim();
+const CORE_SHARE_CLOUDINARY_FOLDER = (APP_CONFIG.cloudinaryFolder || 'core-shares').trim();
+const CORE_SHARE_SITE_URL = (CORE_SHARE_DEFAULT_URL || `${window.location.origin}${window.location.pathname}`).trim();
+const CORE_SHARE_TEXT = `I reached the core in Silent Sand. Explore it here: ${CORE_SHARE_SITE_URL}`;
+const CORE_SHARE_CLOUDINARY_ENABLED = !!(CORE_SHARE_CLOUDINARY_CLOUD_NAME && CORE_SHARE_CLOUDINARY_UPLOAD_PRESET);
 const CORE_QUOTE_REVEAL_THRESHOLD = 0.995;
 const CORE_QUOTE_BLEND_START = 0.85;
 const CORE_QUOTE_DEPTH_RANGE = 1.89;
@@ -25,6 +33,9 @@ let coreShareShown = false;
 let coreSharePending = false;
 let coreShareImageBlob = null;
 let coreShareImageUrl = '';
+let coreShareHostedUrl = '';
+let coreShareUploadPromise = null;
+let coreShareUploadGeneration = 0;
 
 // Fixed rake settings for digging mode
 const DIG_RAKE_SETTINGS = {
@@ -1609,12 +1620,17 @@ const coreShareCloseBtn = document.getElementById('coreShareClose');
 const coreShareNativeBtn = document.getElementById('coreShareNativeBtn');
 const coreShareXBtn = document.getElementById('coreShareXBtn');
 const coreShareFacebookBtn = document.getElementById('coreShareFacebookBtn');
-const coreShareCopyBtn = document.getElementById('coreShareCopyBtn');
+const coreSharePinterestBtn = document.getElementById('coreSharePinterestBtn');
+const coreShareLinkedinBtn = document.getElementById('coreShareLinkedinBtn');
 const coreShareDownloadBtn = document.getElementById('coreShareDownloadBtn');
 const coreCheatBtn = document.getElementById('coreCheatBtn');
 
 function setCoreShareStatus(message) {
   if (coreShareStatus) coreShareStatus.textContent = message;
+}
+
+function trackCoreShareButtonClick(button) {
+  gtag('event', 'core_share_button_click', { button });
 }
 
 function revokeCoreShareImageUrl() {
@@ -1641,6 +1657,9 @@ function resetCoreShareState() {
   coreShareShown = false;
   coreSharePending = false;
   coreShareImageBlob = null;
+  coreShareHostedUrl = '';
+  coreShareUploadPromise = null;
+  coreShareUploadGeneration++;
   revokeCoreShareImageUrl();
   if (coreSharePreview) coreSharePreview.removeAttribute('src');
   closeCoreShareModal();
@@ -1667,6 +1686,77 @@ function captureCoreShareBlob() {
   });
 }
 
+function getCoreShareLinkUrl() {
+  return coreShareHostedUrl || CORE_SHARE_DEFAULT_URL || window.location.href;
+}
+
+async function uploadCoreShareToCloudinary(blob, generation) {
+  if (!CORE_SHARE_CLOUDINARY_ENABLED) return '';
+  const endpoint = `https://api.cloudinary.com/v1_1/${encodeURIComponent(CORE_SHARE_CLOUDINARY_CLOUD_NAME)}/image/upload`;
+  const formData = new FormData();
+  formData.append('file', blob, 'silent-sand-core.png');
+  formData.append('upload_preset', CORE_SHARE_CLOUDINARY_UPLOAD_PRESET);
+  if (CORE_SHARE_CLOUDINARY_FOLDER) {
+    formData.append('folder', CORE_SHARE_CLOUDINARY_FOLDER);
+  }
+  formData.append('tags', 'silent-sand,core-share');
+
+  const res = await fetch(endpoint, {
+    method: 'POST',
+    body: formData
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const message = (data && data.error && data.error.message) || `Cloudinary upload failed (${res.status})`;
+    throw new Error(message);
+  }
+  if (generation !== coreShareUploadGeneration) return '';
+  if (!data || !data.secure_url) {
+    throw new Error('Cloudinary upload missing secure_url');
+  }
+  return data.secure_url;
+}
+
+function startCoreShareUpload() {
+  if (!CORE_SHARE_CLOUDINARY_ENABLED || !coreShareImageBlob) return Promise.resolve('');
+  if (coreShareHostedUrl) return Promise.resolve(coreShareHostedUrl);
+  if (coreShareUploadPromise) return coreShareUploadPromise;
+
+  const generation = coreShareUploadGeneration;
+  coreShareUploadPromise = uploadCoreShareToCloudinary(coreShareImageBlob, generation)
+    .then((url) => {
+      if (!url) return '';
+      coreShareHostedUrl = url;
+      gtag('event', 'core_share_upload_success');
+      return coreShareHostedUrl;
+    })
+    .catch((err) => {
+      gtag('event', 'core_share_upload_failed');
+      throw err;
+    })
+    .finally(() => {
+      coreShareUploadPromise = null;
+    });
+
+  return coreShareUploadPromise;
+}
+
+async function ensureCoreShareHostedUrl() {
+  if (!CORE_SHARE_CLOUDINARY_ENABLED) return '';
+  if (coreShareHostedUrl) return coreShareHostedUrl;
+  if (!coreShareImageBlob) return '';
+  setCoreShareStatus('Uploading image for social share...');
+  try {
+    const url = await startCoreShareUpload();
+    if (url) setCoreShareStatus('Image link ready for X/Facebook.');
+    return url || '';
+  } catch (err) {
+    console.error('Core share upload failed:', err);
+    setCoreShareStatus('Upload failed. Use Download Image for manual attach.');
+    return '';
+  }
+}
+
 async function maybeOpenCoreShareModal(precomputedQuoteRevealRatio = null) {
   if (!diggingMode || coreShareShown || coreSharePending) return;
   const quoteRevealRatio = precomputedQuoteRevealRatio === null
@@ -1681,9 +1771,27 @@ async function maybeOpenCoreShareModal(precomputedQuoteRevealRatio = null) {
     revokeCoreShareImageUrl();
     coreShareImageUrl = URL.createObjectURL(coreShareImageBlob);
     if (coreSharePreview) coreSharePreview.src = coreShareImageUrl;
+    coreShareHostedUrl = '';
     coreShareShown = true;
     openCoreShareModal();
-    setCoreShareStatus('');
+    if (CORE_SHARE_CLOUDINARY_ENABLED) {
+      setCoreShareStatus('Uploading image for social share...');
+      startCoreShareUpload()
+        .then((url) => {
+          if (!url) return;
+          if (coreShareModal && coreShareModal.classList.contains('open')) {
+            setCoreShareStatus('Image link ready for X/Facebook.');
+          }
+        })
+        .catch((err) => {
+          console.error('Core share upload failed:', err);
+          if (coreShareModal && coreShareModal.classList.contains('open')) {
+            setCoreShareStatus('Upload failed. Use Download Image for manual attach.');
+          }
+        });
+    } else {
+      setCoreShareStatus('Cloudinary is not configured. Use Download Image.');
+    }
     gtag('event', 'core_share_modal_open');
   } catch (err) {
     console.error('Failed to build core share image:', err);
@@ -1697,6 +1805,10 @@ function openShareUrl(url) {
   window.open(url, '_blank', 'noopener,noreferrer');
 }
 
+function getCoreShareSourceUrl() {
+  return CORE_SHARE_SITE_URL || window.location.href;
+}
+
 async function shareCoreImage() {
   if (!coreShareImageBlob) {
     setCoreShareStatus('Image not ready yet');
@@ -1706,11 +1818,12 @@ async function shareCoreImage() {
     setCoreShareStatus('Native share unavailable on this browser');
     return;
   }
+  const shareUrl = await ensureCoreShareHostedUrl();
 
   const shareData = {
     title: 'Silent Sand - To the Core',
-    text: 'I reached the core in Silent Sand.',
-    url: window.location.href
+    text: CORE_SHARE_TEXT,
+    url: shareUrl || getCoreShareLinkUrl()
   };
   const file = new File([coreShareImageBlob], 'silent-sand-core.png', { type: 'image/png' });
   if (navigator.canShare && navigator.canShare({ files: [file] })) {
@@ -1730,27 +1843,55 @@ async function shareCoreImage() {
   }
 }
 
-async function copyCoreShareLink() {
-  const url = window.location.href;
-  try {
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      await navigator.clipboard.writeText(url);
-    } else {
-      const tmp = document.createElement('textarea');
-      tmp.value = url;
-      tmp.setAttribute('readonly', '');
-      tmp.style.position = 'fixed';
-      tmp.style.left = '-9999px';
-      document.body.appendChild(tmp);
-      tmp.select();
-      document.execCommand('copy');
-      document.body.removeChild(tmp);
-    }
-    setCoreShareStatus('Link copied');
-    gtag('event', 'core_share_copy_link');
-  } catch (_) {
-    setCoreShareStatus('Could not copy link');
+async function shareCoreImageToX() {
+  if (!coreShareImageBlob) {
+    setCoreShareStatus('Image not ready yet');
+    return;
   }
+
+  if (navigator.share) {
+    try {
+      const shareData = {
+        text: CORE_SHARE_TEXT
+      };
+      const file = new File([coreShareImageBlob], 'silent-sand-core.png', { type: 'image/png' });
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        shareData.files = [file];
+        await navigator.share(shareData);
+        setCoreShareStatus('Shared. Choose X in the share sheet to post image media.');
+        gtag('event', 'core_share_x_native');
+        return;
+      }
+    } catch (err) {
+      if (err && err.name !== 'AbortError') {
+        console.error('Native X share path failed:', err);
+      }
+    }
+  }
+
+  if (window.ClipboardItem && navigator.clipboard && navigator.clipboard.write) {
+    try {
+      await navigator.clipboard.write([
+        new ClipboardItem({
+          'image/png': coreShareImageBlob
+        })
+      ]);
+      const text = encodeURIComponent(CORE_SHARE_TEXT);
+      openShareUrl(`https://twitter.com/intent/tweet?text=${text}`);
+      setCoreShareStatus('Opened X composer. Press Ctrl+V (or Paste) to attach the image.');
+      gtag('event', 'core_share_x_clipboard');
+      return;
+    } catch (err) {
+      console.error('Clipboard image copy failed:', err);
+    }
+  }
+
+  const hostedUrl = await ensureCoreShareHostedUrl();
+  const text = encodeURIComponent(CORE_SHARE_TEXT);
+  const url = encodeURIComponent(hostedUrl || getCoreShareLinkUrl());
+  openShareUrl(`https://twitter.com/intent/tweet?text=${text}&url=${url}`);
+  setCoreShareStatus('X web intent can only prefill links. For image media, use Share Image or Download Image.');
+  gtag('event', 'core_share_x_link_fallback');
 }
 
 function downloadCoreShareImage() {
@@ -1771,6 +1912,7 @@ function downloadCoreShareImage() {
 
 if (coreShareModal) {
   coreShareCloseBtn.addEventListener('click', () => {
+    trackCoreShareButtonClick('close');
     closeCoreShareModal();
     gtag('event', 'core_share_modal_close');
   });
@@ -1780,26 +1922,52 @@ if (coreShareModal) {
       gtag('event', 'core_share_modal_close');
     }
   });
-  coreShareNativeBtn.addEventListener('click', shareCoreImage);
-  coreShareXBtn.addEventListener('click', () => {
-    const text = encodeURIComponent('I reached the core in Silent Sand.');
-    const url = encodeURIComponent(window.location.href);
-    openShareUrl(`https://twitter.com/intent/tweet?text=${text}&url=${url}`);
-    setCoreShareStatus('Opened X share. Attach the downloaded image manually.');
-    gtag('event', 'core_share_x');
+  coreShareNativeBtn.addEventListener('click', () => {
+    trackCoreShareButtonClick('native');
+    shareCoreImage();
   });
-  coreShareFacebookBtn.addEventListener('click', () => {
-    const url = encodeURIComponent(window.location.href);
-    openShareUrl(`https://www.facebook.com/sharer/sharer.php?u=${url}`);
-    setCoreShareStatus('Opened Facebook share. Attach the downloaded image manually.');
+  coreShareXBtn.addEventListener('click', () => {
+    trackCoreShareButtonClick('x');
+    shareCoreImageToX();
+  });
+  coreShareFacebookBtn.addEventListener('click', async () => {
+    trackCoreShareButtonClick('facebook');
+    const hostedUrl = await ensureCoreShareHostedUrl();
+    const url = encodeURIComponent(hostedUrl || getCoreShareLinkUrl());
+    const quote = encodeURIComponent(CORE_SHARE_TEXT);
+    openShareUrl(`https://www.facebook.com/sharer/sharer.php?u=${url}&quote=${quote}`);
+    if (hostedUrl) {
+      setCoreShareStatus('Opened Facebook share with your hosted image link.');
+    } else {
+      setCoreShareStatus('Opened Facebook share. Use Download Image for manual attach.');
+    }
     gtag('event', 'core_share_facebook');
   });
-  coreShareCopyBtn.addEventListener('click', copyCoreShareLink);
-  coreShareDownloadBtn.addEventListener('click', downloadCoreShareImage);
-  if (!navigator.share) {
-    coreShareNativeBtn.disabled = true;
-    coreShareNativeBtn.textContent = 'Share Image (unsupported)';
-  }
+  coreSharePinterestBtn.addEventListener('click', async () => {
+    trackCoreShareButtonClick('pinterest');
+    const hostedUrl = await ensureCoreShareHostedUrl();
+    if (!hostedUrl) {
+      setCoreShareStatus('Pinterest works best with hosted image. Use Download Image if upload fails.');
+      return;
+    }
+    const url = encodeURIComponent(getCoreShareSourceUrl());
+    const media = encodeURIComponent(hostedUrl);
+    const description = encodeURIComponent(CORE_SHARE_TEXT);
+    openShareUrl(`https://pinterest.com/pin/create/button/?url=${url}&media=${media}&description=${description}`);
+    setCoreShareStatus('Opened Pinterest share with your hosted image.');
+    gtag('event', 'core_share_pinterest');
+  });
+  coreShareLinkedinBtn.addEventListener('click', () => {
+    trackCoreShareButtonClick('linkedin');
+    const url = encodeURIComponent(getCoreShareSourceUrl());
+    openShareUrl(`https://www.linkedin.com/sharing/share-offsite/?url=${url}`);
+    setCoreShareStatus('Opened LinkedIn share with the Silent Sand website link.');
+    gtag('event', 'core_share_linkedin');
+  });
+  coreShareDownloadBtn.addEventListener('click', () => {
+    trackCoreShareButtonClick('download');
+    downloadCoreShareImage();
+  });
 }
 
 function escapeHtml(str) {

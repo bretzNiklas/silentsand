@@ -172,9 +172,10 @@
     </div>
     <div class="core-share-actions">
       <button id="coreShareNativeBtn" class="core-share-btn" type="button">Share Image</button>
-      <button id="coreShareXBtn" class="core-share-btn" type="button">Share to X</button>
-      <button id="coreShareFacebookBtn" class="core-share-btn" type="button">Share to Facebook</button>
-      <button id="coreShareCopyBtn" class="core-share-btn" type="button">Copy Link</button>
+      <button id="coreShareXBtn" class="core-share-btn" type="button"><span class="core-share-platform"><span class="share-icon share-icon-x" aria-hidden="true">X</span><span>Share to X</span></span></button>
+      <button id="coreShareFacebookBtn" class="core-share-btn" type="button"><span class="core-share-platform"><span class="share-icon share-icon-facebook" aria-hidden="true">f</span><span>Share to Facebook</span></span></button>
+      <button id="coreSharePinterestBtn" class="core-share-btn" type="button"><span class="core-share-platform"><span class="share-icon share-icon-pinterest" aria-hidden="true">P</span><span>Share to Pinterest</span></span></button>
+      <button id="coreShareLinkedinBtn" class="core-share-btn" type="button"><span class="core-share-platform"><span class="share-icon share-icon-linkedin" aria-hidden="true">in</span><span>Share to LinkedIn</span></span></button>
       <button id="coreShareDownloadBtn" class="core-share-btn" type="button">Download Image</button>
     </div>
     <div id="coreShareStatus" class="core-share-status"></div>
@@ -416,6 +417,15 @@
    <p>&copy; 2026 Silent Sand.</p>
 </footer>
 
+<script>
+  window.SILENT_SAND_CONFIG = Object.assign({}, window.SILENT_SAND_CONFIG, {
+    // Fill these to enable Core screenshot uploads to Cloudinary.
+    cloudinaryCloudName: 'dnf9mq9wx',
+    cloudinaryUploadPreset: 'To The Core State',
+    cloudinaryFolder: 'core-shares',
+    coreShareLinkBaseUrl: 'https://silentsand.me/'
+  });
+</script>
 <script src="script.js"></script>
 </body>
 </html>
