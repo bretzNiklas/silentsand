@@ -7,6 +7,7 @@ const redoBtn = document.getElementById('redoBtn');
 // --- Digging Mode State ---
 let diggingMode = false;
 let savedGardenState = null;   // {h, r, g, b} snapshot
+let savedCoreState = null;     // Persisted core session snapshot while in sandbox
 let savedRakeSettings = null;  // slider values snapshot for restoring on dig exit
 let savedRakeAngle = null;     // rotation snapshot for restoring on dig exit
 let quotePixels = null;        // Uint8Array alpha mask: 0..255 text coverage
@@ -2193,33 +2194,60 @@ function enterDiggingMode() {
   document.getElementById('coreDesc').style.display = '';
   if (isMobile) leaderboardPanel.style.display = '';
 
-  // Reset depth tracking and show pill
-  deepestHeight = 2.0;
-  reachedBottom = false;
-  depthBar.style.opacity = '1';
-  clearedBar.style.opacity = '0';
-  clearedFill.style.height = '0%';
-  depthPillText.textContent = 'Depth';
-  depthPill.style.display = 'flex';
-  updateDepthPill();
+  const canRestoreCoreState = !!(
+    savedCoreState &&
+    savedCoreState.w === W &&
+    savedCoreState.h === H &&
+    savedCoreState.sandHeight &&
+    savedCoreState.sandHeight.length === totalPixels
+  );
 
-  // Reset leaderboard for new dig session - show hint, hide submit
-  leaderboardHint.style.display = '';
-  leaderboardSubmit.style.display = 'none';
-  leaderboardStatus.textContent = '';
-  fetchLeaderboard();
+  if (canRestoreCoreState) {
+    sandHeight.set(savedCoreState.sandHeight);
+    sandR.set(savedCoreState.sandR);
+    sandG.set(savedCoreState.sandG);
+    sandB.set(savedCoreState.sandB);
+    deepestHeight = savedCoreState.deepestHeight;
+    reachedBottom = savedCoreState.reachedBottom;
+    quotePixels = savedCoreState.quotePixels ? new Uint8Array(savedCoreState.quotePixels) : null;
+  } else {
+    if (savedCoreState) savedCoreState = null;
+    deepestHeight = 2.0;
+    reachedBottom = false;
+    buildQuotePixels();
 
-  buildQuotePixels();
-
-  // Fill sand to normal height
-  const def = SAND_COLORS[0];
-  for (let i = 0; i < totalPixels; i++) {
-    sandHeight[i] = 2.0;
-    sandR[i] = def[0];
-    sandG[i] = def[1];
-    sandB[i] = def[2];
+    // Fill sand to normal height
+    const def = SAND_COLORS[0];
+    for (let i = 0; i < totalPixels; i++) {
+      sandHeight[i] = 2.0;
+      sandR[i] = def[0];
+      sandG[i] = def[1];
+      sandB[i] = def[2];
+    }
+    generateNoiseMap();
   }
-  generateNoiseMap();
+
+  // Sync depth pill + leaderboard
+  depthBar.style.opacity = reachedBottom ? '0' : '1';
+  clearedBar.style.opacity = reachedBottom ? '1' : '0';
+  if (isMobile) {
+    if (!reachedBottom) clearedFill.style.width = '0%';
+  } else if (!reachedBottom) {
+    clearedFill.style.height = '0%';
+  }
+  depthPillText.textContent = reachedBottom ? '0.0%' : 'Depth';
+  depthPill.style.display = 'flex';
+  leaderboardStatus.textContent = '';
+  if (reachedBottom) {
+    leaderboardHint.style.display = 'none';
+    leaderboardSubmit.style.display = '';
+    updateLeaderboardSubmitBtn();
+  } else {
+    leaderboardHint.style.display = '';
+    leaderboardSubmit.style.display = 'none';
+    fetchLeaderboard();
+  }
+  updateDepthPill();
 
   diggingMode = true;
 
@@ -2230,6 +2258,17 @@ function enterDiggingMode() {
 function exitDiggingMode() {
   gtag('event', 'mode_switch', { mode: 'zen' });
   resetCoreShareState();
+  savedCoreState = {
+    w: W,
+    h: H,
+    sandHeight: new Float32Array(sandHeight),
+    sandR: new Float32Array(sandR),
+    sandG: new Float32Array(sandG),
+    sandB: new Float32Array(sandB),
+    deepestHeight,
+    reachedBottom,
+    quotePixels: quotePixels ? new Uint8Array(quotePixels) : null
+  };
   sandHeight.set(savedGardenState.h);
   sandR.set(savedGardenState.r);
   sandG.set(savedGardenState.g);
